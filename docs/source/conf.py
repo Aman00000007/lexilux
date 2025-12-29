@@ -15,11 +15,20 @@ project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
+# Import version from package
+try:
+    from lexilux import __version__
+except ImportError as e:
+    raise ImportError(
+        f"Failed to import lexilux.__version__: {e}. "
+        "Make sure the package is installed or the project root is in sys.path."
+    ) from e
+
 project = 'Lexilux'
 copyright = '2025, Lexilux Team'
 author = 'Lexilux Team'
-release = '0.1.2'
-version = '0.1.2'
+release = __version__  # Full version (e.g., '0.1.2')
+version = '.'.join(__version__.split('.')[:2])  # Major.minor version (e.g., '0.1')
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
