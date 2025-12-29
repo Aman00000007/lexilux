@@ -1,0 +1,172 @@
+# Lexilux 🚀
+
+[![PyPI version](https://badge.fury.io/py/lexilux.svg)](https://badge.fury.io/py/lexilux)
+[![Python 3.7+](https://img.shields.io/badge/python-3.7+-blue.svg)](https://www.python.org/downloads/)
+[![License](https://img.shields.io/badge/license-Apache%202.0-green.svg)](LICENSE)
+[![Documentation](https://readthedocs.org/projects/lexilux/badge/?version=latest)](https://lexilux.readthedocs.io)
+
+**Lexilux** is a unified LLM API client library that makes calling Chat, Embedding, Rerank, and Tokenizer APIs as simple as calling a function.
+
+## ✨ Features
+
+- 🎯 **Function-like API**: Call APIs like functions (`chat("hi")`, `embed(["text"])`)
+- 🔄 **Streaming Support**: Built-in streaming for Chat with usage tracking
+- 📊 **Unified Usage**: Consistent usage statistics across all APIs
+- 🔧 **Flexible Input**: Support multiple input formats (string, list, dict)
+- 🚫 **Optional Dependencies**: Tokenizer requires transformers only when needed
+- 🌐 **OpenAI-Compatible**: Works with OpenAI-compatible APIs
+
+## 📦 Installation
+
+### Quick Install
+
+```bash
+pip install lexilux
+```
+
+### With Tokenizer Support
+
+```bash
+pip install lexilux[tokenizer]
+```
+
+### Development Install
+
+```bash
+pip install -e ".[dev]"
+# Or using Makefile
+make dev-install
+```
+
+## 🚀 Quick Start
+
+### Chat
+
+```python
+from lexilux import Chat
+
+chat = Chat(base_url="https://api.example.com/v1", api_key="your-key", model="gpt-4")
+
+# Simple call
+result = chat("Hello, world!")
+print(result.text)  # "Hello! How can I help you?"
+print(result.usage.total_tokens)  # 42
+
+# With system message
+result = chat("What is Python?", system="You are a helpful assistant")
+
+# Streaming
+for chunk in chat.stream("Tell me a joke"):
+    print(chunk.delta, end="")
+    if chunk.done:
+        print(f"\nUsage: {chunk.usage.total_tokens}")
+```
+
+### Embedding
+
+```python
+from lexilux import Embed
+
+embed = Embed(base_url="https://api.example.com/v1", api_key="your-key", model="text-embedding-ada-002")
+
+# Single text
+result = embed("Hello, world!")
+vector = result.vectors  # List[float]
+
+# Batch
+result = embed(["text1", "text2"])
+vectors = result.vectors  # List[List[float]]
+```
+
+### Rerank
+
+```python
+from lexilux import Rerank
+
+rerank = Rerank(base_url="https://api.example.com/v1", api_key="your-key", model="rerank-model")
+
+result = rerank("python http", ["urllib", "requests", "httpx"])
+ranked = result.results  # List[Tuple[int, float]] - (index, score)
+
+# With documents included
+result = rerank("query", ["doc1", "doc2"], include_docs=True)
+ranked = result.results  # List[Tuple[int, float, str]] - (index, score, doc)
+```
+
+### Tokenizer
+
+```python
+from lexilux import Tokenizer
+
+# Auto-offline mode (use local cache if available, download if not)
+tokenizer = Tokenizer("Qwen/Qwen2.5-7B-Instruct", mode="auto_offline")
+
+result = tokenizer("Hello, world!")
+print(result.usage.input_tokens)  # 3
+print(result.input_ids)  # [[15496, 11, 1917, 0]]
+
+# Force-offline mode (for air-gapped environments)
+tokenizer = Tokenizer("Qwen/Qwen2.5-7B-Instruct", mode="force_offline", cache_dir="/models/hf")
+```
+
+## 📚 Documentation
+
+Full documentation available at: [lexilux.readthedocs.io](https://lexilux.readthedocs.io)
+
+## 📖 Examples
+
+Check out the `examples/` directory for practical examples:
+
+- **`basic_chat.py`** - Simple chat completion
+- **`chat_streaming.py`** - Streaming chat
+- **`embedding_demo.py`** - Text embedding
+- **`rerank_demo.py`** - Document reranking
+- **`tokenizer_demo.py`** - Tokenization
+
+Run examples:
+
+```bash
+python examples/basic_chat.py
+```
+
+## 🧪 Testing
+
+```bash
+# Run all tests
+make test
+
+# Run with coverage
+make test-cov
+
+# Run linting
+make lint
+
+# Format code
+make format
+```
+
+## 📚 Documentation
+
+Full documentation available at: [lexilux.readthedocs.io](https://lexilux.readthedocs.io)
+
+Build documentation locally:
+
+```bash
+pip install -e ".[docs]"
+cd docs && make html
+```
+
+## 📄 License
+
+Lexilux is licensed under the **Apache License 2.0**. See [LICENSE](LICENSE) for details.
+
+## 🔗 Links
+
+- **📦 PyPI**: [pypi.org/project/lexilux](https://pypi.org/project/lexilux)
+- **📚 Documentation**: [lexilux.readthedocs.io](https://lexilux.readthedocs.io)
+- **🐙 GitHub**: [github.com/lzjever/lexilux](https://github.com/lzjever/lexilux)
+
+---
+
+**Built with ❤️ by the Lexilux Team**
+
