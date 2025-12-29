@@ -34,6 +34,10 @@ tokenizer = [
     "transformers>=4.30.0",
     "tokenizers>=0.13.0",
 ]
+token = [
+    "transformers>=4.30.0",
+    "tokenizers>=0.13.0",
+]
 dev = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",

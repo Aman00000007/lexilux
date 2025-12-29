@@ -10,11 +10,28 @@ while hiding provider-specific differences.
 Supported Modes
 ---------------
 
-- **openai**: OpenAI-compatible standard rerank API
+- **openai**: OpenAI-compatible standard rerank API (e.g., Jina AI)
 - **dashscope**: Alibaba Cloud DashScope rerank API
 - **chat**: Chat-based custom rerank API (default)
 
 All modes return the same ``RerankResult`` format, hiding provider differences from users.
+
+Unified Result Format
+---------------------
+
+Regardless of the backend provider, all modes return a consistent ``RerankResult``:
+
+- **Results**: List of tuples ``(index, score)`` or ``(index, score, document)``
+- **Sorting**: Always sorted by score in descending order (higher is better)
+- **Index Mapping**: Original document indices are preserved correctly
+- **Usage**: Unified ``Usage`` object with token statistics
+
+The internal transformation process handles:
+- Request format adaptation (parameter name mapping, structure wrapping)
+- Response parsing (extracting from provider-specific structures)
+- Result normalization (sorting, filtering, formatting)
+
+See :doc:`../rerank_modes_comparison` for detailed comparison of internal data formats.
 
 .. automodule:: lexilux.rerank
    :members:

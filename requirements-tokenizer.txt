@@ -1,0 +1,8 @@
+# Tokenizer optional dependencies
+# Install with: pip install -r requirements-tokenizer.txt
+# Or use: pip install lexilux[tokenizer] or pip install lexilux[token]
+
+-r requirements.txt
+transformers>=4.30.0
+tokenizers>=0.13.0
+

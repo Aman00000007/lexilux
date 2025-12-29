@@ -6,4 +6,7 @@ responses>=0.23.0
 black>=22.0.0
 flake8>=5.0.0
 mypy>=0.991
+# Optional: Tokenizer dependencies (for full test coverage)
+# Uncomment if you want to run tokenizer tests with real transformers
+# -r requirements-tokenizer.txt
 

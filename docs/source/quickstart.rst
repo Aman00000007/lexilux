@@ -75,6 +75,10 @@ Rerank
 Tokenizer
 ---------
 
+.. note::
+   The Tokenizer feature requires optional dependencies. Install with:
+   ``pip install lexilux[tokenizer]`` or ``pip install lexilux[token]``
+
 .. code-block:: python
 
    from lexilux import Tokenizer

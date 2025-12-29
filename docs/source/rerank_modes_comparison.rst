@@ -1,48 +1,57 @@
 Rerank Modes Comparison
-=======================
+========================
 
-Lexilux supports two rerank modes: **OpenAI-compatible** and **Chat-based**. This document provides a comprehensive comparison of their data formats, request/response structures, and usage patterns to help you choose the appropriate mode for your use case.
+Lexilux supports three rerank modes: **OpenAI-compatible**, **DashScope**, and **Chat-based**. This document provides a comprehensive comparison of their data formats, request/response structures, internal processing, and how they are unified into a standard ``RerankResult`` format.
 
 Overview
 --------
 
 .. list-table:: Mode Comparison Summary
    :header-rows: 1
-   :widths: 30 35 35
+   :widths: 20 25 25 30
 
    * - Feature
      - OpenAI-Compatible Mode
+     - DashScope Mode
      - Chat-Based Mode
    * - **Mode Identifier**
      - ``mode="openai"``
+     - ``mode="dashscope"``
      - ``mode="chat"`` (default)
    * - **API Endpoint**
      - ``POST {base_url}/rerank``
+     - ``POST {base_url}/text-rerank/text-rerank``
      - ``POST {base_url}/chat/completions``
    * - **Request Format**
      - Direct JSON object
+     - Wrapped in ``input`` and ``parameters``
      - JSON string in message content
    * - **Response Format**
      - Direct JSON object
+     - Wrapped in ``output``
      - JSON string in message content
    * - **Parameter Names**
      - ``top_n``, ``return_documents``
+     - ``top_n``, ``return_documents`` (in ``parameters``)
      - ``top_k``, ``include_docs``
    * - **Score Field Name**
+     - ``relevance_score``
      - ``relevance_score``
      - ``score`` or ``relevance_score``
    * - **Document Format**
      - Nested object: ``{"text": "..."}``
+     - Nested object: ``{"text": "..."}``
      - Direct string or nested object
    * - **Use Case**
-     - Standard rerank APIs (Cohere, etc.)
+     - Standard rerank APIs (Jina, Cohere, etc.)
+     - Alibaba Cloud DashScope
      - Custom chat-based rerank services
 
 Request Format Comparison
--------------------------
+--------------------------
 
 OpenAI-Compatible Mode
-~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~
 
 **Endpoint:**
 .. code-block:: http
@@ -59,7 +68,7 @@ OpenAI-Compatible Mode
 .. code-block:: json
 
    {
-     "model": "rerank-english-v3.0",
+     "model": "jina-reranker-v3",
      "query": "python http library",
      "documents": [
        "urllib is a built-in Python library for HTTP requests",
@@ -71,11 +80,60 @@ OpenAI-Compatible Mode
    }
 
 **Key Characteristics:**
-- Direct JSON object structure
+- Direct JSON object structure at top level
 - Uses ``documents`` array (not ``candidates``)
 - Uses ``top_n`` parameter (not ``top_k``)
 - Uses ``return_documents`` boolean (not ``include_docs``)
 - All fields are at the top level
+
+**Internal Processing:**
+- Handler: ``OpenAICompatibleHandler``
+- Request building: Maps ``top_k`` → ``top_n``, ``include_docs`` → ``return_documents``
+- Endpoint detection: Checks if ``/rerank`` is in base_url, otherwise appends it
+
+DashScope Mode
+~~~~~~~~~~~~~~
+
+**Endpoint:**
+.. code-block:: http
+
+   POST {base_url}/text-rerank/text-rerank
+
+**Request Headers:**
+.. code-block:: http
+
+   Content-Type: application/json
+   Authorization: Bearer {api_key}
+
+**Request Body:**
+.. code-block:: json
+
+   {
+     "model": "qwen3-rerank",
+     "input": {
+       "query": "python http library",
+       "documents": [
+         "urllib is a built-in Python library for HTTP requests",
+         "requests is a popular third-party HTTP library for Python",
+         "httpx is a modern async HTTP client for Python"
+       ]
+     },
+     "parameters": {
+       "top_n": 3,
+       "return_documents": true
+     }
+   }
+
+**Key Characteristics:**
+- Query and documents wrapped in ``input`` object
+- Additional parameters in ``parameters`` object
+- Uses same parameter names as OpenAI (``top_n``, ``return_documents``)
+- Endpoint is typically the full path (not appended)
+
+**Internal Processing:**
+- Handler: ``DashScopeHandler``
+- Request building: Wraps query/docs in ``input``, puts options in ``parameters``
+- Endpoint: Uses base_url as-is (full path expected)
 
 Chat-Based Mode
 ~~~~~~~~~~~~~~~
@@ -106,43 +164,22 @@ Chat-Based Mode
    }
 
 **Key Characteristics:**
-- Uses standard chat completions endpoint
-- Rerank data is JSON string in ``messages[0].content``
+- Rerank data serialized as JSON string in ``message.content``
 - Uses ``candidates`` array (not ``documents``)
 - Uses ``top_k`` parameter (not ``top_n``)
-- Additional fields can be added to the rerank data JSON string
+- Uses chat completions endpoint
+- Requires JSON parsing of message content
 
-Side-by-Side Request Comparison
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. list-table:: Request Field Mapping
-   :header-rows: 1
-   :widths: 25 35 40
-
-   * - Field Purpose
-     - OpenAI Mode
-     - Chat Mode
-   * - **Model identifier**
-     - ``payload["model"]``
-     - ``payload["model"]``
-   * - **Query text**
-     - ``payload["query"]``
-     - ``json.loads(payload["messages"][0]["content"])["query"]``
-   * - **Document list**
-     - ``payload["documents"]``
-     - ``json.loads(payload["messages"][0]["content"])["candidates"]``
-   * - **Top results limit**
-     - ``payload["top_n"]``
-     - ``json.loads(payload["messages"][0]["content"])["top_k"]``
-   * - **Include documents**
-     - ``payload["return_documents"]``
-     - Handled by ``include_docs`` parameter in Lexilux API
+**Internal Processing:**
+- Handler: ``ChatBasedHandler``
+- Request building: Serializes rerank data to JSON string, wraps in chat message
+- Supports multiple response formats (see Response Format section)
 
 Response Format Comparison
 ---------------------------
 
-OpenAI-Compatible Mode
-~~~~~~~~~~~~~~~~~~~~~~
+OpenAI-Compatible Mode Response
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 **Response Structure:**
 .. code-block:: json
@@ -150,581 +187,463 @@ OpenAI-Compatible Mode
    {
      "results": [
        {
-         "index": 1,
+         "index": 0,
          "relevance_score": 0.95,
          "document": {
            "text": "requests is a popular third-party HTTP library for Python"
          }
        },
        {
-         "index": 0,
-         "relevance_score": 0.80,
+         "index": 1,
+         "relevance_score": 0.85,
          "document": {
-           "text": "urllib is a built-in Python library for HTTP requests"
+           "text": "httpx is a modern async HTTP client for Python"
          }
        },
        {
          "index": 2,
          "relevance_score": 0.70,
          "document": {
-           "text": "httpx is a modern async HTTP client for Python"
+           "text": "urllib is a built-in Python library for HTTP requests"
          }
        }
      ],
      "usage": {
-       "prompt_tokens": 50,
-       "completion_tokens": 10,
-       "total_tokens": 60
+       "total_tokens": 150
      }
    }
 
 **Key Characteristics:**
-- Direct JSON object at top level
-- Results in ``results`` array
-- Each result has:
-  - ``index``: Original document index (0-based)
-  - ``relevance_score``: Relevance score (typically 0.0-1.0)
-  - ``document``: Object with ``text`` field containing document content
-- Usage statistics at top level
+- Results array with objects containing ``index``, ``relevance_score``, and ``document``
+- Document is nested object with ``text`` field
+- Usage information at top level
+- Results already sorted by relevance (descending)
 
-Chat-Based Mode
-~~~~~~~~~~~~~~~
+**Internal Parsing:**
+- Extracts ``index`` and ``relevance_score`` from each result
+- Extracts document text from ``document.text`` or ``document.content``
+- Handles both dict and string document formats
+
+DashScope Mode Response
+~~~~~~~~~~~~~~~~~~~~~~~
 
 **Response Structure:**
 .. code-block:: json
 
    {
-     "id": "cmpl-abc123",
-     "object": "chat.completion",
-     "created": 1234567890,
-     "model": "RerankService",
-     "choices": [
-       {
-         "index": 0,
-         "message": {
-           "role": "assistant",
-           "content": "{\"results\": [{\"index\": 1, \"score\": 0.95}, {\"index\": 0, \"score\": 0.80}, {\"index\": 2, \"score\": 0.70}]}"
+     "output": {
+       "results": [
+         {
+           "index": 0,
+           "relevance_score": 0.95,
+           "document": {
+             "text": "requests is a popular third-party HTTP library for Python"
+           }
          },
-         "finish_reason": "stop"
-       }
-     ],
+         {
+           "index": 1,
+           "relevance_score": 0.85,
+           "document": {
+             "text": "httpx is a modern async HTTP client for Python"
+           }
+         }
+       ]
+     },
      "usage": {
-       "prompt_tokens": 50,
-       "completion_tokens": 10,
-       "total_tokens": 60
+       "total_tokens": 150
      }
    }
 
 **Key Characteristics:**
-- Standard chat completion response structure
-- Rerank results in ``choices[0].message.content`` as JSON string
-- Multiple result formats supported:
-  - Dictionary: ``{"results": [...]}`` or ``{"data": [...]}``
-  - Direct list: ``[["doc", score], ...]`` or ``[[index, score], ...]``
-- Score field can be ``score`` or ``relevance_score``
-- Document can be direct string or nested object
+- Results wrapped in ``output`` object
+- Same structure as OpenAI inside ``output.results``
+- Usage information at top level
+- Results format matches OpenAI standard
 
-Side-by-Side Response Comparison
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+**Internal Parsing:**
+- Extracts results from ``output.results``
+- Same parsing logic as OpenAI mode (inherits from ``OpenAICompatibleHandler``)
+- Handles document extraction identically
 
-.. list-table:: Response Field Mapping
-   :header-rows: 1
-   :widths: 25 35 40
+Chat-Based Mode Response
+~~~~~~~~~~~~~~~~~~~~~~~~~
 
-   * - Data Location
-     - OpenAI Mode
-     - Chat Mode
-   * - **Results array**
-     - ``response["results"]``
-     - ``json.loads(response["choices"][0]["message"]["content"])["results"]``
-   * - **Result index**
-     - ``result["index"]``
-     - ``result["index"]`` or ``result[0]`` (if list format)
-   * - **Result score**
-     - ``result["relevance_score"]``
-     - ``result["score"]`` or ``result["relevance_score"]`` or ``result[1]`` (if list format)
-   * - **Document text**
-     - ``result["document"]["text"]``
-     - ``result["document"]`` (string) or ``result["document"]["text"]`` (object) or ``result[0]`` (if list format)
-   * - **Usage stats**
-     - ``response["usage"]``
-     - ``response["usage"]``
-
-Usage Comparison
-----------------
-
-Initialization
-~~~~~~~~~~~~~~
-
-**OpenAI-Compatible Mode:**
-.. code-block:: python
-
-   from lexilux import Rerank
-
-   rerank = Rerank(
-       base_url="https://api.cohere.ai/v1",
-       api_key="your-api-key",
-       model="rerank-english-v3.0",
-       mode="openai"  # Explicit OpenAI mode
-   )
-
-**Chat-Based Mode:**
-.. code-block:: python
-
-   from lexilux import Rerank
-
-   rerank = Rerank(
-       base_url="http://192.168.0.220:20551/v1",
-       api_key="your-api-key",
-       model="RerankService",
-       mode="chat"  # Or omit, chat is default
-   )
-
-Basic Rerank Call
-~~~~~~~~~~~~~~~~~
-
-**OpenAI-Compatible Mode:**
-.. code-block:: python
-
-   query = "python http library"
-   docs = [
-       "urllib is a built-in Python library for HTTP requests",
-       "requests is a popular third-party HTTP library for Python",
-       "httpx is a modern async HTTP client for Python"
-   ]
-
-   result = rerank(query, docs)
-   # result.results: [(1, 0.95), (0, 0.80), (2, 0.70)]
-
-**Chat-Based Mode:**
-.. code-block:: python
-
-   query = "python http library"
-   docs = [
-       "urllib is a built-in Python library for HTTP requests",
-       "requests is a popular third-party HTTP library for Python",
-       "httpx is a modern async HTTP client for Python"
-   ]
-
-   result = rerank(query, docs)
-   # result.results: [(1, 0.95), (0, 0.80), (2, 0.70)]
-
-**Note:** The Lexilux API is identical for both modes! The mode selection only affects the underlying HTTP request/response format.
-
-With Top-K Filtering
-~~~~~~~~~~~~~~~~~~~~
-
-**OpenAI-Compatible Mode:**
-.. code-block:: python
-
-   result = rerank(query, docs, top_k=2)
-   # Internally uses "top_n": 2 in request
-   # result.results: [(1, 0.95), (0, 0.80)]
-
-**Chat-Based Mode:**
-.. code-block:: python
-
-   result = rerank(query, docs, top_k=2)
-   # Internally uses "top_k": 2 in rerank data JSON string
-   # result.results: [(1, 0.95), (0, 0.80)]
-
-With Document Inclusion
-~~~~~~~~~~~~~~~~~~~~~~~
-
-**OpenAI-Compatible Mode:**
-.. code-block:: python
-
-   result = rerank(query, docs, include_docs=True)
-   # Internally uses "return_documents": true in request
-   # result.results: [(1, 0.95, "requests is..."), (0, 0.80, "urllib is...")]
-
-**Chat-Based Mode:**
-.. code-block:: python
-
-   result = rerank(query, docs, include_docs=True)
-   # Document inclusion handled in response parsing
-   # result.results: [(1, 0.95, "requests is..."), (0, 0.80, "urllib is...")]
-
-Mode Override in Call
-~~~~~~~~~~~~~~~~~~~~~
-
-You can override the mode for individual calls:
-
-.. code-block:: python
-
-   # Initialize with chat mode
-   rerank = Rerank(base_url="...", api_key="...", model="...", mode="chat")
-
-   # Use OpenAI mode for this specific call
-   result = rerank(query, docs, mode="openai")
-
-   # Use chat mode for this call (or omit mode parameter)
-   result = rerank(query, docs, mode="chat")
-
-Data Format Details
---------------------
-
-Request Data Structure
-~~~~~~~~~~~~~~~~~~~~~~
-
-**OpenAI-Compatible Mode Request:**
+**Response Structure (Standard Format):**
 .. code-block:: json
 
    {
-     "model": "rerank-model",
-     "query": "search query",
-     "documents": ["doc1", "doc2", "doc3"],
-     "top_n": 3,
-     "return_documents": true,
-     "extra_field": "value"  // Additional fields from 'extra' parameter
-   }
-
-**Chat-Based Mode Request:**
-.. code-block:: json
-
-   {
-     "model": "rerank-model",
-     "messages": [
+     "choices": [
        {
-         "role": "user",
-         "content": "{\"query\": \"search query\", \"candidates\": [\"doc1\", \"doc2\", \"doc3\"], \"top_k\": 3, \"extra_field\": \"value\"}"
+         "message": {
+           "content": "{\"results\": [{\"index\": 0, \"score\": 0.95, \"document\": \"requests is a popular third-party HTTP library for Python\"}, {\"index\": 1, \"score\": 0.85, \"document\": \"httpx is a modern async HTTP client for Python\"}]}"
+         }
        }
      ],
+     "usage": {
+       "total_tokens": 200
+     }
+   }
+
+**Alternative Response Formats Supported:**
+
+1. **Direct List Format:**
+   .. code-block:: json
+
+      {
+        "choices": [{
+          "message": {
+            "content": "[[\"requests is popular\", 0.95], [\"httpx is modern\", 0.85]]"
+          }
+        }]
+      }
+
+2. **Dict with Results:**
+   .. code-block:: json
+
+      {
+        "choices": [{
+          "message": {
+            "content": "{\"results\": [{\"index\": 0, \"score\": 0.95}, {\"index\": 1, \"score\": 0.85}]}"
+          }
+        }]
+      }
+
+3. **Dict with Data:**
+   .. code-block:: json
+
+      {
+        "choices": [{
+          "message": {
+            "content": "{\"data\": [{\"index\": 0, \"score\": 0.95}]}"
+          }
+        }]
+      }
+
+**Key Characteristics:**
+- Rerank results serialized as JSON string in ``message.content``
+- Requires JSON parsing of content
+- Supports multiple result formats (list, dict with results/data)
+- Flexible field names: ``score`` or ``relevance_score``
+- Document can be string or nested object
+
+**Internal Parsing:**
+- Extracts content from ``choices[0].message.content``
+- Parses JSON string to get rerank results
+- Handles multiple formats:
+  - Direct list: ``[["doc", score], ...]``
+  - Dict with results: ``{"results": [...]}``
+  - Dict with data: ``{"data": [...]}``
+- Maps document text to original index by matching text
+- Handles both positive and negative scores (sorts descending)
+
+Unified Result Format
+---------------------
+
+All three modes are unified into a standard ``RerankResult`` format, hiding provider differences from users.
+
+Standard RerankResult Format
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+**Result Structure:**
+.. code-block:: python
+
+   RerankResult(
+       results=[
+           (0, 0.95),           # (index, score) when include_docs=False
+           (1, 0.85),
+           (2, 0.70)
+       ],
+       usage=Usage(
+           input_tokens=100,
+           output_tokens=50,
+           total_tokens=150
+       ),
+       raw={}  # Optional: full raw response if return_raw=True
+   )
+
+**With Documents:**
+.. code-block:: python
+
+   RerankResult(
+       results=[
+           (0, 0.95, "requests is a popular third-party HTTP library for Python"),
+           (1, 0.85, "httpx is a modern async HTTP client for Python"),
+           (2, 0.70, "urllib is a built-in Python library for HTTP requests")
+       ],
+       usage=Usage(...),
+       raw={}
+   )
+
+**Key Characteristics:**
+- Results are always tuples: ``(index, score)`` or ``(index, score, document)``
+- Results are sorted by score in descending order (higher is better)
+- Index refers to original document position in input array
+- Score is always a float (handles both positive and negative)
+- Documents are optional strings (only if ``include_docs=True``)
+
+Unification Process
+~~~~~~~~~~~~~~~~~~~
+
+The unification process happens in three stages:
+
+1. **Request Building** (``build_request``):
+   - Maps unified parameters (``top_k``, ``include_docs``) to provider-specific names
+   - Adapts request structure to provider format
+   - Handles endpoint path differences
+
+2. **Response Parsing** (``parse_response``):
+   - Extracts results from provider-specific response structure
+   - Normalizes field names (``score``/``relevance_score`` → ``score``)
+   - Extracts document text from various formats
+   - Maps results to original document indices
+   - Returns intermediate format: ``List[Tuple[int, float, Optional[str]]]``
+
+3. **Result Normalization** (``_normalize_results``):
+   - Sorts results by score (descending)
+   - Applies ``top_k`` filtering if specified
+   - Formats results based on ``include_docs`` flag
+   - Returns final unified format: ``List[Tuple[int, float]]`` or ``List[Tuple[int, float, str]]``
+
+**Unification Flow Diagram:**
+
+.. code-block:: text
+
+   User Call
+      ↓
+   Rerank.__call__()
+      ↓
+   Handler.build_request()  →  Provider-specific request format
+      ↓
+   Handler.make_request()    →  HTTP POST to provider
+      ↓
+   Handler.parse_response()  →  Intermediate format: List[Tuple[int, float, Optional[str]]]
+      ↓
+   Handler._normalize_results()  →  Unified format: List[Tuple[int, float]] or List[Tuple[int, float, str]]
+      ↓
+   RerankResult  →  User receives consistent format
+
+Internal Data Format Differences
+---------------------------------
+
+Request Data Transformation
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+**Unified Input (User API):**
+.. code-block:: python
+
+   rerank(
+       query="python http library",
+       docs=["urllib", "requests", "httpx"],
+       top_k=2,
+       include_docs=True
+   )
+
+**OpenAI-Compatible Transformation:**
+.. code-block:: json
+
+   {
+     "model": "jina-reranker-v3",
+     "query": "python http library",
+     "documents": ["urllib", "requests", "httpx"],
+     "top_n": 2,
+     "return_documents": true
+   }
+
+**DashScope Transformation:**
+.. code-block:: json
+
+   {
+     "model": "qwen3-rerank",
+     "input": {
+       "query": "python http library",
+       "documents": ["urllib", "requests", "httpx"]
+     },
+     "parameters": {
+       "top_n": 2,
+       "return_documents": true
+     }
+   }
+
+**Chat-Based Transformation:**
+.. code-block:: json
+
+   {
+     "model": "RerankService",
+     "messages": [{
+       "role": "user",
+       "content": "{\"query\": \"python http library\", \"candidates\": [\"urllib\", \"requests\", \"httpx\"], \"top_k\": 2}"
+     }],
      "stream": false
    }
 
-Response Data Structure
-~~~~~~~~~~~~~~~~~~~~~~~
+Response Data Transformation
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-**OpenAI-Compatible Mode Response:**
+**OpenAI-Compatible Response:**
 .. code-block:: json
 
    {
      "results": [
-       {
-         "index": 0,
-         "relevance_score": 0.95,
-         "document": {"text": "doc1"}
-       }
+       {"index": 0, "relevance_score": 0.95, "document": {"text": "requests"}},
+       {"index": 1, "relevance_score": 0.85, "document": {"text": "httpx"}}
      ],
-     "usage": {"total_tokens": 100}
+     "usage": {"total_tokens": 150}
    }
 
-**Chat-Based Mode Response (Format 1 - Dictionary):**
+**DashScope Response:**
+.. code-block:: json
+
+   {
+     "output": {
+       "results": [
+         {"index": 0, "relevance_score": 0.95, "document": {"text": "requests"}},
+         {"index": 1, "relevance_score": 0.85, "document": {"text": "httpx"}}
+       ]
+     },
+     "usage": {"total_tokens": 150}
+   }
+
+**Chat-Based Response:**
 .. code-block:: json
 
    {
      "choices": [{
        "message": {
-         "content": "{\"results\": [{\"index\": 0, \"score\": 0.95}]}"
+         "content": "{\"results\": [{\"index\": 0, \"score\": 0.95, \"document\": \"requests\"}, {\"index\": 1, \"score\": 0.85, \"document\": \"httpx\"}]}"
        }
      }],
-     "usage": {"total_tokens": 100}
+     "usage": {"total_tokens": 200}
    }
 
-**Chat-Based Mode Response (Format 2 - Direct List):**
-.. code-block:: json
+**Unified Output (All Modes):**
+.. code-block:: python
 
-   {
-     "choices": [{
-       "message": {
-         "content": "[[\"doc1\", 0.95], [\"doc2\", 0.80]]"
-       }
-     }],
-     "usage": {"total_tokens": 100}
-   }
+   RerankResult(
+       results=[
+           (0, 0.95, "requests"),
+           (1, 0.85, "httpx")
+       ],
+       usage=Usage(total_tokens=150)
+   )
 
-Field Name Mapping
--------------------
+Key Differences Summary
+-----------------------
 
-.. list-table:: Field Name Differences
+.. list-table:: Internal Format Differences
    :header-rows: 1
-   :widths: 30 35 35
+   :widths: 25 25 25 25
 
-   * - Purpose
-     - OpenAI Mode
-     - Chat Mode
-   * - **Top results limit**
-     - ``top_n``
-     - ``top_k``
-   * - **Include documents flag**
-     - ``return_documents``
-     - ``include_docs`` (Lexilux API)
-   * - **Document array**
+   * - Aspect
+     - OpenAI-Compatible
+     - DashScope
+     - Chat-Based
+   * - **Request Wrapping**
+     - Direct JSON object
+     - Wrapped in ``input`` + ``parameters``
+     - JSON string in ``message.content``
+   * - **Parameter Names**
+     - ``top_n``, ``return_documents``
+     - ``top_n``, ``return_documents`` (in ``parameters``)
+     - ``top_k`` (in JSON string)
+   * - **Document Field Name**
      - ``documents``
-     - ``candidates``
-   * - **Score field**
+     - ``documents`` (in ``input``)
+     - ``candidates`` (in JSON string)
+   * - **Response Wrapping**
+     - Direct ``results`` array
+     - Wrapped in ``output.results``
+     - JSON string in ``message.content``
+   * - **Score Field Name**
+     - ``relevance_score``
      - ``relevance_score``
      - ``score`` or ``relevance_score``
-   * - **Results array**
-     - ``results``
-     - ``results`` or ``data``
-   * - **Document text**
-     - ``document.text``
-     - ``document`` (string) or ``document.text`` (object)
+   * - **Document Format**
+     - ``{"text": "..."}``
+     - ``{"text": "..."}``
+     - String or ``{"text": "..."}``
+   * - **Result Format Flexibility**
+     - Fixed structure
+     - Fixed structure
+     - Multiple formats supported
 
-Score Format Handling
-----------------------
-
-Both modes support positive and negative scores, but the handling is consistent:
-
-**Positive Scores (e.g., 0.95, 0.80, 0.70):**
-- Higher score = Better relevance
-- Sorted in descending order: 0.95 > 0.80 > 0.70
-- Works the same in both modes
-
-**Negative Scores (e.g., -2.8, -3.2, -4.0):**
-- Less negative = Better relevance
-- Sorted in descending order: -2.8 > -3.2 > -4.0
-- Works the same in both modes
-
-Lexilux automatically detects the score format and applies the correct sorting in both modes.
-
-Error Handling
+Usage Examples
 --------------
 
-Both modes use standard HTTP error codes:
+All three modes use the same unified API:
 
-.. list-table:: Error Codes
-   :header-rows: 1
-   :widths: 20 40 40
+.. code-block:: python
 
-   * - Status Code
-     - OpenAI Mode
-     - Chat Mode
-   * - **400 Bad Request**
-     - Invalid request format
-     - Invalid request format or JSON parsing error
-   * - **401 Unauthorized**
-     - Invalid or missing API key
-     - Invalid or missing API key
-   * - **429 Too Many Requests**
-     - Rate limit exceeded
-     - Rate limit exceeded
-   * - **500 Internal Server Error**
-     - Server-side error
-     - Server-side error
+   from lexilux import Rerank
 
-**OpenAI Mode Error Response:**
-.. code-block:: json
+   # OpenAI-compatible mode (Jina)
+   rerank_openai = Rerank(
+       base_url="https://api.jina.ai/v1",
+       api_key="jina_xxx",
+       model="jina-reranker-v3",
+       mode="openai"
+   )
 
-   {
-     "error": {
-       "message": "Invalid request format",
-       "type": "invalid_request_error"
-     }
-   }
+   # DashScope mode
+   rerank_dashscope = Rerank(
+       base_url="https://dashscope.aliyuncs.com/api/v1/services/rerank/text-rerank/text-rerank",
+       api_key="sk-xxx",
+       model="qwen3-rerank",
+       mode="dashscope"
+   )
 
-**Chat Mode Error Response:**
-.. code-block:: json
+   # Chat-based mode
+   rerank_chat = Rerank(
+       base_url="http://192.168.0.220:20551/v1",
+       api_key="sk-xxx",
+       model="RerankService",
+       mode="chat"
+   )
 
-   {
-     "error": {
-       "message": "Invalid JSON in message content",
-       "type": "invalid_request_error"
-     }
-   }
+   # All modes return the same format
+   query = "python http library"
+   docs = ["urllib", "requests", "httpx"]
 
-Or error message in content:
-.. code-block:: json
+   result_openai = rerank_openai(query, docs, top_k=2)
+   result_dashscope = rerank_dashscope(query, docs, top_k=2)
+   result_chat = rerank_chat(query, docs, top_k=2)
 
-   {
-     "choices": [{
-       "message": {
-         "content": "Error: Invalid query format"
-       }
-     }]
-   }
+   # All results have the same structure
+   assert isinstance(result_openai.results[0], tuple)
+   assert isinstance(result_dashscope.results[0], tuple)
+   assert isinstance(result_chat.results[0], tuple)
 
-When to Use Which Mode
-----------------------
+   # All results are sorted by score (descending)
+   assert result_openai.results[0][1] >= result_openai.results[1][1]
+   assert result_dashscope.results[0][1] >= result_dashscope.results[1][1]
+   assert result_chat.results[0][1] >= result_chat.results[1][1]
 
-Use OpenAI-Compatible Mode When:
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Benefits of Unification
+-----------------------
 
-- ✅ You're using a standard rerank API (Cohere, OpenAI-compatible services)
-- ✅ You want direct, simple request/response format
-- ✅ You prefer standard field names (``top_n``, ``return_documents``)
-- ✅ Your service already implements OpenAI-compatible rerank API
-- ✅ You need nested document objects (``{"text": "..."}``)
-
-Use Chat-Based Mode When:
-~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-- ✅ You're building a custom rerank service
-- ✅ You want to leverage existing chat completion infrastructure
-- ✅ You need flexible response formats (multiple formats supported)
-- ✅ You want to reuse chat API endpoints
-- ✅ Your service already implements chat completions API
-- ✅ You need to send additional metadata in the rerank request
+1. **Consistent API**: Users don't need to learn different APIs for different providers
+2. **Easy Provider Switching**: Change mode without changing business code
+3. **Unified Result Format**: Same data structure regardless of backend
+4. **Score Consistency**: All scores sorted descending (higher is better)
+5. **Index Mapping**: Original document indices preserved correctly
+6. **Error Handling**: Consistent error messages across all modes
+7. **Usage Statistics**: Unified ``Usage`` object format
 
 Migration Guide
 ---------------
 
-Migrating from OpenAI Mode to Chat Mode
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+**From OpenAI-Compatible to DashScope:**
+- Change ``mode="openai"`` to ``mode="dashscope"``
+- Update ``base_url`` to DashScope endpoint
+- Update ``model`` to DashScope model name
+- No code changes needed (same API)
 
-If you have an OpenAI-compatible rerank service and want to migrate to chat-based:
+**From Chat-Based to OpenAI-Compatible:**
+- Change ``mode="chat"`` to ``mode="openai"``
+- Update ``base_url`` to OpenAI-compatible endpoint
+- Update ``model`` to OpenAI-compatible model name
+- No code changes needed (same API)
 
-1. **Change the endpoint:**
-   - From: ``POST /rerank``
-   - To: ``POST /chat/completions``
-
-2. **Wrap rerank data in message:**
-   - Move all rerank fields into ``messages[0].content`` as JSON string
-   - Change ``documents`` to ``candidates``
-   - Change ``top_n`` to ``top_k``
-
-3. **Wrap results in chat response:**
-   - Put results in ``choices[0].message.content`` as JSON string
-   - Keep usage statistics at top level
-
-4. **Update Lexilux client:**
-   - Change ``mode="openai"`` to ``mode="chat"``
-
-Migrating from Chat Mode to OpenAI Mode
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-If you have a chat-based rerank service and want to migrate to OpenAI-compatible:
-
-1. **Change the endpoint:**
-   - From: ``POST /chat/completions``
-   - To: ``POST /rerank``
-
-2. **Flatten request structure:**
-   - Extract fields from ``messages[0].content`` JSON string
-   - Put them directly in request body
-   - Change ``candidates`` to ``documents``
-   - Change ``top_k`` to ``top_n``
-
-3. **Flatten response structure:**
-   - Extract results from ``choices[0].message.content`` JSON string
-   - Put them directly in response body as ``results`` array
-   - Ensure ``relevance_score`` field name
-   - Ensure nested ``document.text`` structure
-
-4. **Update Lexilux client:**
-   - Change ``mode="chat"`` to ``mode="openai"``
-
-Code Examples
--------------
-
-Complete Example: OpenAI Mode
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. code-block:: python
-
-   from lexilux import Rerank
-
-   # Initialize
-   rerank = Rerank(
-       base_url="https://api.cohere.ai/v1",
-       api_key="co-xxx",
-       model="rerank-english-v3.0",
-       mode="openai"
-   )
-
-   # Rerank
-   query = "machine learning"
-   docs = [
-       "Neural networks are computational models",
-       "Support vector machines are classification algorithms",
-       "Random forests combine multiple decision trees"
-   ]
-
-   result = rerank(query, docs, top_k=2, include_docs=True)
-
-   # Process results
-   for idx, score, doc in result.results:
-       print(f"Rank {idx}: {score:.3f} - {doc}")
-
-   print(f"Tokens used: {result.usage.total_tokens}")
-
-Complete Example: Chat Mode
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. code-block:: python
-
-   from lexilux import Rerank
-
-   # Initialize
-   rerank = Rerank(
-       base_url="http://192.168.0.220:20551/v1",
-       api_key="sk-123456",
-       model="RerankService",
-       mode="chat"  # or omit (default)
-   )
-
-   # Rerank
-   query = "machine learning"
-   docs = [
-       "Neural networks are computational models",
-       "Support vector machines are classification algorithms",
-       "Random forests combine multiple decision trees"
-   ]
-
-   result = rerank(query, docs, top_k=2, include_docs=True)
-
-   # Process results
-   for idx, score, doc in result.results:
-       print(f"Rank {idx}: {score:.3f} - {doc}")
-
-   print(f"Tokens used: {result.usage.total_tokens}")
-
-Summary Table
--------------
-
-.. list-table:: Complete Feature Comparison
-   :header-rows: 1
-   :widths: 25 37 38
-
-   * - Feature
-     - OpenAI-Compatible Mode
-     - Chat-Based Mode
-   * - **Mode Parameter**
-     - ``mode="openai"``
-     - ``mode="chat"`` (default)
-   * - **Endpoint**
-     - ``/rerank``
-     - ``/chat/completions``
-   * - **Request Structure**
-     - Direct JSON object
-     - JSON string in message
-   * - **Query Field**
-     - ``payload["query"]``
-     - ``content["query"]``
-   * - **Documents Field**
-     - ``payload["documents"]``
-     - ``content["candidates"]``
-   * - **Top Results**
-     - ``payload["top_n"]``
-     - ``content["top_k"]``
-   * - **Include Docs**
-     - ``payload["return_documents"]``
-     - Handled by Lexilux
-   * - **Response Structure**
-     - Direct JSON object
-     - JSON string in message
-   * - **Results Location**
-     - ``response["results"]``
-     - ``content["results"]`` or ``content["data"]``
-   * - **Score Field**
-     - ``result["relevance_score"]``
-     - ``result["score"]`` or ``result["relevance_score"]``
-   * - **Document Format**
-     - ``{"text": "..."}``
-     - String or ``{"text": "..."}``
-   * - **Result Formats**
-     - Dictionary only
-     - Dictionary or list
-   * - **Flexibility**
-     - Standard format
-     - Multiple formats supported
-
-See Also
---------
-
-- :doc:`../chat_rerank_spec` - Detailed specification for implementing chat-based rerank services
-- :doc:`api_reference/rerank` - Complete API reference for Rerank class
-- :doc:`examples/rerank` - Usage examples for reranking
-
+**From Any Mode to Another:**
+- Only change initialization parameters
+- Business logic remains identical
+- Result format is always the same

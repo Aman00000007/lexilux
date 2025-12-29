@@ -27,7 +27,11 @@ pip install lexilux
 ### With Tokenizer Support
 
 ```bash
+# Using full name
 pip install lexilux[tokenizer]
+
+# Or using short name
+pip install lexilux[token]
 ```
 
 ### Development Install

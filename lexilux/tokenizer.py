@@ -128,7 +128,7 @@ class Tokenizer:
             if require_transformers:
                 raise ImportError(
                     "transformers library is required for Tokenizer. "
-                    "Install it with: pip install lexilux[tokenizer] or pip install transformers"
+                    "Install it with: pip install lexilux[tokenizer] (or lexilux[token]) or pip install transformers"
                 )
             # If require_transformers=False, we'll check again on first use
 
