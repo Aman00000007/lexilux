@@ -10,7 +10,33 @@ Demonstrates document reranking using Lexilux with various scenarios:
 - Include documents option
 """
 
+from config_loader import get_rerank_config, parse_args
+
 from lexilux import Rerank
+
+
+def get_rerank_client(config_path=None):
+    """Get Rerank client with configuration"""
+    args = parse_args()
+    config_file = config_path or args.config
+
+    try:
+        config = get_rerank_config(config_path=config_file)
+    except (FileNotFoundError, KeyError) as e:
+        print(f"Error loading configuration: {e}")
+        print("\nUsing default placeholder values. To use real API:")
+        print("  1. Create tests/test_endpoints.json with your API credentials")
+        print(
+            "  2. Or specify a config file: python examples/rerank_demo.py --config /path/to/config.json"
+        )
+        config = {
+            "base_url": "https://api.example.com/v1",
+            "api_key": "your-api-key",
+            "model": "rerank-model",
+            "mode": "openai",
+        }
+
+    return Rerank(**config)
 
 
 def demo_basic_rerank():
@@ -19,11 +45,7 @@ def demo_basic_rerank():
     print("1. Basic Reranking")
     print("=" * 60)
 
-    rerank = Rerank(
-        base_url="https://api.example.com/v1",
-        api_key="your-api-key",
-        model="rerank-model",
-    )
+    rerank = get_rerank_client()
 
     query = "python http library"
     docs = [
@@ -47,11 +69,7 @@ def demo_top_k():
     print("2. Top-K Filtering")
     print("=" * 60)
 
-    rerank = Rerank(
-        base_url="https://api.example.com/v1",
-        api_key="your-api-key",
-        model="rerank-model",
-    )
+    rerank = get_rerank_client()
 
     query = "machine learning"
     docs = [
@@ -75,11 +93,7 @@ def demo_include_docs():
     print("3. Include Documents in Results")
     print("=" * 60)
 
-    rerank = Rerank(
-        base_url="https://api.example.com/v1",
-        api_key="your-api-key",
-        model="rerank-model",
-    )
+    rerank = get_rerank_client()
 
     query = "data processing"
     docs = [
@@ -135,11 +149,7 @@ def demo_extra_parameters():
     print("5. Extra Parameters")
     print("=" * 60)
 
-    rerank = Rerank(
-        base_url="https://api.example.com/v1",
-        api_key="your-api-key",
-        model="rerank-model",
-    )
+    rerank = get_rerank_client()
 
     query = "search query"
     docs = ["doc1", "doc2", "doc3", "doc4", "doc5"]
@@ -166,25 +176,22 @@ def main():
     print("\n" + "=" * 60)
     print("Lexilux Rerank Examples")
     print("=" * 60)
-    print("\nNote: These examples use placeholder API credentials.")
-    print("To run with real APIs, update the base_url, api_key, and model.")
-    print("\n" + "=" * 60)
-
-    # Note: These demos use placeholder credentials
-    # In practice, you would load these from environment variables or config files
 
     demo_score_sorting_rules()
 
-    print("\n" + "=" * 60)
-    print("Note: The following examples require valid API credentials.")
-    print("Uncomment them and provide your API details to run.")
-    print("=" * 60)
-
-    # Uncomment to run with real API:
-    # demo_basic_rerank()
-    # demo_top_k()
-    # demo_include_docs()
-    # demo_extra_parameters()
+    # Run demos (will use config if available, otherwise placeholders)
+    try:
+        demo_basic_rerank()
+        demo_top_k()
+        demo_include_docs()
+        demo_extra_parameters()
+    except Exception as e:
+        print(f"\nNote: Some demos failed (this is expected if using placeholder credentials): {e}")
+        print("To run with real APIs:")
+        print("  1. Create tests/test_endpoints.json with your API credentials")
+        print(
+            "  2. Or specify a config file: python examples/rerank_demo.py --config /path/to/config.json"
+        )
 
 
 if __name__ == "__main__":

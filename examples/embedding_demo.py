@@ -5,17 +5,34 @@ Embedding Example
 Demonstrates text embedding using Lexilux.
 """
 
+from config_loader import get_embed_config, parse_args
+
 from lexilux import Embed
 
 
 def main():
     """Main function"""
+    # Parse command line arguments
+    args = parse_args()
+
+    # Load configuration from endpoints.json
+    try:
+        config = get_embed_config(config_path=args.config)
+    except (FileNotFoundError, KeyError) as e:
+        print(f"Error loading configuration: {e}")
+        print("\nUsing default placeholder values. To use real API:")
+        print("  1. Create tests/test_endpoints.json with your API credentials")
+        print(
+            "  2. Or specify a config file: python examples/embedding_demo.py --config /path/to/config.json"
+        )
+        config = {
+            "base_url": "https://api.example.com/v1",
+            "api_key": "your-api-key",
+            "model": "text-embedding-ada-002",
+        }
+
     # Initialize embed client
-    embed = Embed(
-        base_url="https://api.example.com/v1",
-        api_key="your-api-key",
-        model="text-embedding-ada-002",
-    )
+    embed = Embed(**config)
 
     # Single text
     result = embed("Hello, world!")

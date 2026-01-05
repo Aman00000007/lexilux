@@ -1,179 +1,21 @@
 """
-Chat API client with streaming support.
+Chat API client.
 
-Provides a simple, function-like API for chat completions with unified usage tracking.
+Provides a simple, function-like API for chat completions with support for
+both non-streaming and streaming responses.
 """
 
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, Any, Iterator, Literal, Sequence, Union
+from typing import Iterator, Sequence
 
 import requests
 
-from lexilux.chat_params import ChatParams
-from lexilux.usage import Json, ResultBase, Usage
-
-if TYPE_CHECKING:
-    pass
-
-# Type aliases
-Role = Literal["system", "user", "assistant", "tool"]
-MessageLike = Union[str, dict[str, str]]
-MessagesLike = Union[str, Sequence[MessageLike]]
-
-
-class ChatResult(ResultBase):
-    """
-    Chat completion result (non-streaming).
-
-    Attributes:
-        text: The generated text content.
-        finish_reason: Reason why the generation stopped. Possible values:
-            - "stop": Model stopped naturally or hit stop sequence
-            - "length": Reached max_tokens limit
-            - "content_filter": Content was filtered
-            - None: Unknown or not provided
-        usage: Usage statistics.
-        raw: Raw API response.
-
-    Important Notes:
-        - finish_reason is only available when the API successfully returns a response.
-        - If network connection is interrupted, an exception will be raised
-          (requests.RequestException, ConnectionError, TimeoutError, etc.)
-          and no ChatResult will be returned.
-        - To distinguish network errors from normal completion:
-          * Network error: Exception is raised, no ChatResult returned
-          * Normal completion: ChatResult returned with finish_reason set
-
-    Examples:
-        >>> result = chat("Hello")
-        >>> print(result.text)
-        "Hello! How can I help you?"
-        >>> print(result.usage.total_tokens)
-        42
-        >>> print(result.finish_reason)
-        "stop"
-
-        Handling network errors:
-        >>> try:
-        ...     result = chat("Hello")
-        ...     print(f"Finished: {result.finish_reason}")
-        ... except requests.RequestException as e:
-        ...     print(f"Network error: {e}")
-        ...     # No finish_reason available - connection failed
-    """
-
-    def __init__(
-        self,
-        *,
-        text: str,
-        usage: Usage,
-        finish_reason: str | None = None,
-        raw: Json | None = None,
-    ):
-        """
-        Initialize ChatResult.
-
-        Args:
-            text: Generated text content.
-            usage: Usage statistics.
-            finish_reason: Reason why generation stopped.
-            raw: Raw API response.
-        """
-        super().__init__(usage=usage, raw=raw)
-        self.text = text
-        self.finish_reason = finish_reason
-
-    def __str__(self) -> str:
-        """Return the text content when converted to string."""
-        return self.text
-
-    def __repr__(self) -> str:
-        """Return string representation."""
-        return f"ChatResult(text={self.text!r}, finish_reason={self.finish_reason!r}, usage={self.usage!r})"
-
-
-class ChatStreamChunk(ResultBase):
-    """
-    Chat streaming chunk.
-
-    Each chunk in a streaming response contains:
-
-    - delta: The incremental text content (may be empty)
-    - done: Whether this is the final chunk
-    - finish_reason: Reason why generation stopped (only set when done=True).
-        Possible values:
-        - "stop": Model stopped naturally or hit stop sequence
-        - "length": Reached max_tokens limit
-        - "content_filter": Content was filtered
-        - None: Still generating (intermediate chunks), [DONE] message, or unknown
-    - usage: Usage statistics (may be empty/None for intermediate chunks,
-      complete only in the final chunk when include_usage=True)
-
-    Attributes:
-        delta: Incremental text content.
-        done: Whether this is the final chunk.
-        finish_reason: Reason why generation stopped (None for intermediate chunks).
-        usage: Usage statistics (may be incomplete for intermediate chunks).
-        raw: Raw chunk data.
-
-    Important Notes:
-        - finish_reason is only available when the API successfully completes.
-        - If network connection is interrupted, an exception will be raised
-          (requests.RequestException, ConnectionError, TimeoutError, etc.)
-          and no chunk with finish_reason will be received.
-        - To distinguish network errors from normal completion:
-          * Network error: Exception is raised, no done=True chunk received
-          * Normal completion: done=True chunk received with finish_reason set
-          * Incomplete stream: Exception raised after receiving some chunks
-            (check if any chunk has done=True to determine if completion occurred)
-
-    Examples:
-        >>> for chunk in chat.stream("Hello"):
-        ...     print(chunk.delta, end="")
-        ...     if chunk.done:
-        ...         print(f"\\nUsage: {chunk.usage.total_tokens}")
-        ...         print(f"Finish reason: {chunk.finish_reason}")
-
-        Handling network errors:
-        >>> try:
-        ...     for chunk in chat.stream("Hello"):
-        ...         print(chunk.delta, end="")
-        ...         if chunk.done:
-        ...             print(f"\\nFinished: {chunk.finish_reason}")
-        ... except requests.RequestException as e:
-        ...     print(f"\\nNetwork error: {e}")
-        ...     # No finish_reason available - connection was interrupted
-    """
-
-    def __init__(
-        self,
-        *,
-        delta: str,
-        done: bool,
-        usage: Usage,
-        finish_reason: str | None = None,
-        raw: Json | None = None,
-    ):
-        """
-        Initialize ChatStreamChunk.
-
-        Args:
-            delta: Incremental text content.
-            done: Whether this is the final chunk.
-            usage: Usage statistics.
-            finish_reason: Reason why generation stopped.
-            raw: Raw chunk data.
-        """
-        super().__init__(usage=usage, raw=raw)
-        self.delta = delta
-        self.done = done
-        self.finish_reason = finish_reason
-
-    def __repr__(self) -> str:
-        """Return string representation."""
-        return f"ChatStreamChunk(delta={self.delta!r}, done={self.done}, finish_reason={self.finish_reason!r}, usage={self.usage!r})"
+from lexilux.chat.models import ChatResult, ChatStreamChunk, MessagesLike
+from lexilux.chat.params import ChatParams
+from lexilux.chat.utils import normalize_finish_reason, normalize_messages, parse_usage
+from lexilux.usage import Json, Usage
 
 
 class Chat:
@@ -230,117 +72,6 @@ class Chat:
         if self.api_key:
             self.headers.setdefault("Authorization", f"Bearer {self.api_key}")
         self.headers.setdefault("Content-Type", "application/json")
-
-    def _normalize_messages(
-        self,
-        messages: MessagesLike,
-        system: str | None = None,
-    ) -> list[dict[str, str]]:
-        """
-        Normalize messages input to a list of message dictionaries.
-
-        Supports multiple input formats:
-        - str: Converted to [{"role": "user", "content": str}]
-        - List[Dict]: Used as-is
-        - List[str]: Converted to [{"role": "user", "content": str}, ...]
-
-        Args:
-            messages: Messages in various formats.
-            system: Optional system message to prepend.
-
-        Returns:
-            Normalized list of message dictionaries.
-
-        Examples:
-            >>> chat._normalize_messages("hi")
-            [{"role": "user", "content": "hi"}]
-
-            >>> chat._normalize_messages([{"role": "user", "content": "hi"}])
-            [{"role": "user", "content": "hi"}]
-
-            >>> chat._normalize_messages("hi", system="You are helpful")
-            [{"role": "system", "content": "You are helpful"}, {"role": "user", "content": "hi"}]
-        """
-        result: list[dict[str, str]] = []
-
-        # Add system message if provided
-        if system:
-            result.append({"role": "system", "content": system})
-
-        # Normalize messages
-        if isinstance(messages, str):
-            # Single string -> single user message
-            result.append({"role": "user", "content": messages})
-        elif isinstance(messages, (list, tuple)):
-            # List of messages
-            for msg in messages:
-                if isinstance(msg, str):
-                    # String in list -> user message
-                    result.append({"role": "user", "content": msg})
-                elif isinstance(msg, dict):
-                    # Dict -> use as-is (should have "role" and "content")
-                    if "role" in msg and "content" in msg:
-                        result.append({"role": msg["role"], "content": msg["content"]})
-                    else:
-                        raise ValueError(
-                            f"Invalid message dict: {msg}. Must have 'role' and 'content' keys."
-                        )
-                else:
-                    raise ValueError(f"Invalid message type: {type(msg)}. Expected str or dict.")
-        else:
-            raise ValueError(
-                f"Invalid messages type: {type(messages)}. Expected str, list, or tuple."
-            )
-
-        return result
-
-    def _parse_usage(self, response_data: Json) -> Usage:
-        """
-        Parse usage information from API response.
-
-        Args:
-            response_data: API response data.
-
-        Returns:
-            Usage object.
-        """
-        usage_data = response_data.get("usage")
-        if usage_data is None:
-            usage_data = {}
-        elif not isinstance(usage_data, dict):
-            usage_data = {}
-
-        return Usage(
-            input_tokens=usage_data.get("prompt_tokens") or usage_data.get("input_tokens"),
-            output_tokens=usage_data.get("completion_tokens") or usage_data.get("output_tokens"),
-            total_tokens=usage_data.get("total_tokens"),
-            details=usage_data,
-        )
-
-    @staticmethod
-    def _normalize_finish_reason(finish_reason: Any) -> str | None:
-        """
-        Normalize finish_reason to a valid string or None.
-
-        Handles cases where compatible services may return invalid values:
-        - None -> None
-        - Empty string "" -> None
-        - Valid string ("stop", "length", "content_filter") -> as-is
-        - Other types (int, bool, etc.) -> None (defensive)
-
-        Args:
-            finish_reason: Raw finish_reason value from API.
-
-        Returns:
-            Normalized finish_reason (str or None).
-        """
-        if finish_reason is None:
-            return None
-        if isinstance(finish_reason, str):
-            # Empty string should be treated as None
-            return finish_reason if finish_reason else None
-        # For any other type (int, bool, list, etc.), return None defensively
-        return None
 
     def __call__(
         self,
@@ -416,7 +147,7 @@ class Chat:
             >>> result = chat("Hello", params=params, extra={"custom": "value"})
         """
         # Normalize messages
-        normalized_messages = self._normalize_messages(messages, system=system)
+        normalized_messages = normalize_messages(messages, system=system)
 
         # Prepare request
         model = model or self.model
@@ -516,10 +247,10 @@ class Chat:
         text = message.get("content", "") or ""
 
         # Normalize finish_reason (defensive against invalid implementations)
-        finish_reason = self._normalize_finish_reason(choice.get("finish_reason"))
+        finish_reason = normalize_finish_reason(choice.get("finish_reason"))
 
         # Parse usage
-        usage = self._parse_usage(response_data)
+        usage = parse_usage(response_data)
 
         # Return result
         return ChatResult(
@@ -602,7 +333,7 @@ class Chat:
             ...     print(chunk.delta, end="")
         """
         # Normalize messages
-        normalized_messages = self._normalize_messages(messages, system=system)
+        normalized_messages = normalize_messages(messages, system=system)
 
         # Prepare request
         model = model or self.model
@@ -734,7 +465,7 @@ class Chat:
             content = delta.get("content") or ""
 
             # Normalize finish_reason (defensive against invalid implementations)
-            finish_reason = self._normalize_finish_reason(choice.get("finish_reason"))
+            finish_reason = normalize_finish_reason(choice.get("finish_reason"))
             # done is True when finish_reason is a non-empty string
             done = finish_reason is not None
 
@@ -744,7 +475,7 @@ class Chat:
             # Parse usage if present (usually only in final chunk when include_usage=True)
             usage = None
             if "usage" in event_data:
-                usage = self._parse_usage(event_data)
+                usage = parse_usage(event_data)
                 final_usage = usage
             elif done and final_usage is None:
                 # Final chunk but no usage yet - create empty usage
@@ -761,3 +492,4 @@ class Chat:
                 finish_reason=finish_reason,
                 raw=event_data if return_raw_events else {},
             )
+

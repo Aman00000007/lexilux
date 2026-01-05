@@ -15,12 +15,45 @@ Basic chat completion:
    chat = Chat(
        base_url="https://api.example.com/v1",
        api_key="your-key",
-       model="gpt-4"
+       model="gpt-4",
+       proxies=None  # Optional: {"http": "http://proxy:port", "https": "https://proxy:port"}
    )
 
    result = chat("Hello, world!")
    print(result.text)
    print(result.usage.total_tokens)
+   print(result.finish_reason)  # "stop", "length", "content_filter", or None
+
+With parameters (direct arguments):
+
+.. code-block:: python
+
+   result = chat(
+       "Tell me a joke",
+       temperature=0.7,
+       max_tokens=100,
+       stop=".",
+   )
+
+Using ChatParams for structured configuration:
+
+.. code-block:: python
+
+   from lexilux import Chat, ChatParams
+
+   # Create parameter configuration
+   params = ChatParams(
+       temperature=0.7,
+       top_p=0.9,
+       max_tokens=100,
+       presence_penalty=0.2,
+       frequency_penalty=0.1,
+   )
+
+   result = chat("Tell me a story", params=params)
+
+   # You can also override params with direct arguments
+   result = chat("Tell me a story", params=params, temperature=0.5)
 
 Streaming:
 
@@ -30,6 +63,15 @@ Streaming:
        print(chunk.delta, end="")
        if chunk.done:
            print(f"\nUsage: {chunk.usage.total_tokens}")
+           print(f"Finish reason: {chunk.finish_reason}")
+
+Streaming with ChatParams:
+
+.. code-block:: python
+
+   params = ChatParams(temperature=0.5, max_tokens=50)
+   for chunk in chat.stream("Write a short story", params=params):
+       print(chunk.delta, end="")
 
 Embedding
 ---------
@@ -43,7 +85,8 @@ Single text:
    embed = Embed(
        base_url="https://api.example.com/v1",
        api_key="your-key",
-       model="text-embedding-ada-002"
+       model="text-embedding-ada-002",
+       proxies=None  # Optional: proxy configuration
    )
 
    result = embed("Hello, world!")
@@ -56,6 +99,21 @@ Batch:
    result = embed(["text1", "text2"])
    vectors = result.vectors  # List[List[float]]
 
+With parameters using EmbedParams:
+
+.. code-block:: python
+
+   from lexilux import Embed, EmbedParams
+
+   # Configure embedding parameters
+   params = EmbedParams(
+       dimensions=512,  # For models that support it (e.g., text-embedding-3-*)
+       encoding_format="float",  # or "base64"
+   )
+
+   result = embed("Hello, world!", params=params)
+   vector = result.vectors
+
 Rerank
 ------
 
@@ -66,7 +124,8 @@ Rerank
    rerank = Rerank(
        base_url="https://api.example.com/v1",
        api_key="your-key",
-       model="rerank-model"
+       model="rerank-model",
+       proxies=None  # Optional: proxy configuration
    )
 
    result = rerank("python http", ["urllib", "requests", "httpx"])

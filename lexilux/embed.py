@@ -6,10 +6,11 @@ Provides a simple, function-like API for text embeddings with unified usage trac
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, List, Sequence
+from typing import TYPE_CHECKING, List, Literal, Sequence
 
 import requests
 
+from lexilux.embed_params import EmbedParams
 from lexilux.usage import Json, ResultBase, Usage
 
 if TYPE_CHECKING:
@@ -141,16 +142,31 @@ class Embed:
         input: str | Sequence[str],
         *,
         model: str | None = None,
+        dimensions: int | None = None,
+        encoding_format: Literal["float", "base64"] | None = None,
+        user: str | None = None,
+        params: EmbedParams | None = None,
         extra: Json | None = None,
         return_raw: bool = False,
     ) -> EmbedResult:
         """
         Make an embedding request.
 
+        Supports both direct parameter passing (backward compatible) and EmbedParams
+        dataclass for structured configuration.
+
         Args:
             input: Single text string or sequence of text strings.
             model: Model to use (overrides default).
-            extra: Additional parameters to include in the request.
+            dimensions: Number of dimensions for output embeddings. Only supported
+                in some models (e.g., text-embedding-3-*). Default: None (use model default)
+            encoding_format: Format to return embeddings. "float" (default) or "base64".
+                Some providers may support additional formats.
+            user: Unique identifier for end-user (for monitoring/rate limiting).
+            params: EmbedParams dataclass instance. If provided, overrides individual
+                parameters above. Useful for structured configuration.
+            extra: Additional custom parameters for non-standard providers.
+                Merged with params if both are provided.
             return_raw: Whether to include full raw response.
 
         Returns:
@@ -159,6 +175,18 @@ class Embed:
         Raises:
             requests.RequestException: On network or HTTP errors.
             ValueError: On invalid input or response format.
+
+        Examples:
+            Basic usage (backward compatible):
+            >>> result = embed("Hello", dimensions=512)
+
+            Using EmbedParams:
+            >>> from lexilux import EmbedParams
+            >>> params = EmbedParams(dimensions=512, encoding_format="float")
+            >>> result = embed("Hello", params=params)
+
+            Combining params and extra:
+            >>> result = embed("Hello", params=params, extra={"custom": "value"})
         """
         # Normalize input to list
         is_single = isinstance(input, str)
@@ -172,11 +200,35 @@ class Embed:
         if not model:
             raise ValueError("Model must be specified (either in __init__ or __call__)")
 
+        # Build parameters from EmbedParams or individual args
+        if params is not None:
+            # Use EmbedParams as base, override with individual args if provided
+            param_dict = params.to_dict(exclude_none=True)
+            # Override with explicit parameters if provided
+            if dimensions is not None:
+                param_dict["dimensions"] = dimensions
+            if encoding_format is not None:
+                param_dict["encoding_format"] = encoding_format
+            if user is not None:
+                param_dict["user"] = user
+        else:
+            # Build from individual parameters (backward compatible)
+            param_dict: Json = {}
+            if dimensions is not None:
+                param_dict["dimensions"] = dimensions
+            if encoding_format is not None:
+                param_dict["encoding_format"] = encoding_format
+            if user is not None:
+                param_dict["user"] = user
+
+        # Build payload
         payload: Json = {
             "model": model,
             "input": input_list,
+            **param_dict,
         }
 
+        # Merge extra parameters (highest priority)
         if extra:
             payload.update(extra)
 

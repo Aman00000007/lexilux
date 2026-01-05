@@ -26,6 +26,30 @@ Demonstrates streaming chat completions:
 python examples/chat_streaming.py
 ```
 
+### chat_params_demo.py
+Comprehensive demonstration of chat parameters and their effects:
+- max_tokens parameter and finish_reason
+- stop sequences (single and multiple)
+- temperature parameter (creativity control)
+- ChatParams dataclass for structured configuration
+- presence_penalty and frequency_penalty
+- Streaming with parameters
+- Comparing different parameter combinations
+
+**Features demonstrated:**
+- How max_tokens affects output length and finish_reason
+- How stop sequences control when generation stops
+- How temperature affects output creativity
+- Using ChatParams for reusable parameter configurations
+- How penalties affect output characteristics
+- Parameter effects in streaming mode
+- Side-by-side comparison of different parameter settings
+
+**Run:**
+```bash
+python examples/chat_params_demo.py
+```
+
 ### embedding_demo.py
 Examples for text embeddings:
 - Single text embedding
@@ -67,6 +91,23 @@ Examples for tokenization:
 **Run:**
 ```bash
 python examples/tokenizer_demo.py
+```
+
+### error_handling_demo.py
+Demonstrates error handling and distinguishing network errors from normal completions:
+- Handling exceptions for non-streaming requests
+- Handling exceptions for streaming requests
+- Detecting completion vs interruption
+- Understanding when finish_reason is available
+
+**Key concepts:**
+- finish_reason is ONLY available when API successfully returns a response
+- Network errors raise exceptions - no finish_reason is available
+- For streaming, check if done=True chunk was received before error
+
+**Run:**
+```bash
+python examples/error_handling_demo.py
 ```
 
 ### real_api_test.py
@@ -305,6 +346,7 @@ To run all examples (except real API tests which require credentials):
 # Basic examples
 python examples/basic_chat.py
 python examples/chat_streaming.py
+python examples/chat_params_demo.py
 python examples/embedding_demo.py
 python examples/rerank_demo.py
 python examples/tokenizer_demo.py
