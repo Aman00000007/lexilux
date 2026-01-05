@@ -5,9 +5,10 @@ Provides local tokenization with support for offline/online modes and automatic 
 """
 
 from __future__ import annotations
-from typing import Any, Dict, List, Literal, Optional, Sequence, Union, TYPE_CHECKING
 
-from lexilux.usage import Usage, ResultBase, Json
+from typing import TYPE_CHECKING, Any, Literal, Sequence
+
+from lexilux.usage import Json, ResultBase, Usage
 
 if TYPE_CHECKING:
     pass
@@ -35,10 +36,10 @@ class TokenizeResult(ResultBase):
     def __init__(
         self,
         *,
-        input_ids: List[List[int]],
-        attention_mask: Optional[List[List[int]]],
+        input_ids: list[list[int]],
+        attention_mask: list[list[int]] | None,
         usage: Usage,
-        raw: Optional[Json] = None,
+        raw: Json | None = None,
     ):
         """
         Initialize TokenizeResult.
@@ -86,9 +87,9 @@ class Tokenizer:
         self,
         model: str,
         *,
-        cache_dir: Optional[str] = None,
+        cache_dir: str | None = None,
         mode: TokenizerMode = "auto_offline",
-        revision: Optional[str] = None,
+        revision: str | None = None,
         trust_remote_code: bool = False,
         require_transformers: bool = True,
     ):
@@ -207,14 +208,14 @@ class Tokenizer:
 
     def __call__(
         self,
-        text: Union[str, Sequence[str]],
+        text: str | Sequence[str],
         *,
         add_special_tokens: bool = True,
-        truncation: Union[bool, str] = False,
-        max_length: Optional[int] = None,
-        padding: Union[bool, str] = False,
+        truncation: bool | str = False,
+        max_length: int | None = None,
+        padding: bool | str = False,
         return_attention_mask: bool = True,
-        extra: Optional[Json] = None,
+        extra: Json | None = None,
         return_raw: bool = False,
     ) -> TokenizeResult:
         """
@@ -248,7 +249,7 @@ class Tokenizer:
             raise ValueError("Text cannot be empty")
 
         # Prepare tokenizer arguments
-        tokenizer_kwargs: Dict[str, Any] = {
+        tokenizer_kwargs: dict[str, Any] = {
             "add_special_tokens": add_special_tokens,
             "truncation": truncation,
             "padding": padding,

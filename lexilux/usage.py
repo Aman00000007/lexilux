@@ -5,7 +5,8 @@ All API calls return ResultBase subclasses that include usage statistics.
 """
 
 from __future__ import annotations
-from typing import Any, Dict, Optional, TYPE_CHECKING
+
+from typing import TYPE_CHECKING, Any, Dict
 
 if TYPE_CHECKING:
     pass
@@ -40,10 +41,10 @@ class Usage:
     def __init__(
         self,
         *,
-        input_tokens: Optional[int] = None,
-        output_tokens: Optional[int] = None,
-        total_tokens: Optional[int] = None,
-        details: Optional[Json] = None,
+        input_tokens: int | None = None,
+        output_tokens: int | None = None,
+        total_tokens: int | None = None,
+        details: Json | None = None,
     ):
         """
         Initialize Usage object.
@@ -103,7 +104,7 @@ class ResultBase:
         {}
     """
 
-    def __init__(self, *, usage: Usage, raw: Optional[Json] = None):
+    def __init__(self, *, usage: Usage, raw: Json | None = None):
         """
         Initialize ResultBase object.
 

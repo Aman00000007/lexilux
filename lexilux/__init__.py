@@ -4,12 +4,11 @@ Lexilux - Unified LLM API client library
 Provides Chat, Embedding, Rerank, and Tokenizer support with a simple, function-like API.
 """
 
-from lexilux.usage import Usage, ResultBase
 from lexilux.chat import Chat, ChatResult, ChatStreamChunk
 from lexilux.embed import Embed, EmbedResult
 from lexilux.rerank import Rerank, RerankResult
 from lexilux.tokenizer import Tokenizer, TokenizeResult, TokenizerMode
-
+from lexilux.usage import ResultBase, Usage
 
 __all__ = [
     # Usage
@@ -31,4 +30,4 @@ __all__ = [
     "TokenizerMode",
 ]
 
-__version__ = "0.3.1"
+__version__ = "0.4.0"

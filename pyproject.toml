@@ -43,8 +43,7 @@ dev = [
     "pytest-mock>=3.10.0",
     "sphinx>=5.0.0",
     "sphinx-rtd-theme>=1.0.0",
-    "black>=22.0.0",
-    "flake8>=5.0.0",
+    "ruff>=0.1.0",
     "mypy>=0.991",
 ]
 docs = [
@@ -62,8 +61,7 @@ dev = [
     "pytest-cov>=4.0.0",
     "pytest-mock>=3.10.0",
     "responses>=0.23.0",
-    "black>=22.0.0",
-    "flake8>=5.0.0",
+    "ruff>=0.1.0",
     "mypy>=0.991",
     "build>=0.10.0",
 ]
@@ -96,10 +94,15 @@ version = {attr = "lexilux.__version__"}
 [tool.setuptools.package-data]
 lexilux = ["py.typed"]
 
-[tool.black]
+[tool.ruff]
 line-length = 100
-target-version = ['py38', 'py39', 'py310', 'py311', 'py312', 'py313', 'py314']
-include = '\.pyi?$'
+target-version = "py38"
+select = ["E", "F", "I", "N", "W", "UP"]
+ignore = ["E501"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -129,18 +132,4 @@ exclude_lines = [
     "if TYPE_CHECKING:",
 ]
 
-[tool.flake8]
-max-line-length = 100
-extend-ignore = ["E203", "W503"]
-exclude = [
-    ".git",
-    "__pycache__",
-    "build",
-    "dist",
-    "*.egg-info",
-    ".venv",
-    "venv",
-    ".pytest_cache",
-    ".mypy_cache",
-]
 

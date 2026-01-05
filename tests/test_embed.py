@@ -3,6 +3,7 @@ Embedding API client test cases
 """
 
 import json
+
 import pytest
 import responses
 
@@ -307,11 +308,11 @@ class TestEmbedRealAPI:
     @pytest.mark.integration
     @pytest.mark.skip_if_no_config
     def test_embed_real_api_basic(self, test_config, has_real_api_config):
-        """Test embedding with real API (embed_local_qwen3)"""
-        if not has_real_api_config or "embed_local_qwen3" not in test_config:
+        """Test embedding with real API (embedding)"""
+        if not has_real_api_config or "embedding" not in test_config:
             pytest.skip("No real API config available")
 
-        config = test_config["embed_local_qwen3"]
+        config = test_config["embedding"]
         embed = Embed(
             base_url=config["api_base"],
             api_key=config["api_key"],
@@ -329,10 +330,10 @@ class TestEmbedRealAPI:
     @pytest.mark.skip_if_no_config
     def test_embed_real_api_multiple(self, test_config, has_real_api_config):
         """Test embedding multiple texts with real API"""
-        if not has_real_api_config or "embed_local_qwen3" not in test_config:
+        if not has_real_api_config or "embedding" not in test_config:
             pytest.skip("No real API config available")
 
-        config = test_config["embed_local_qwen3"]
+        config = test_config["embedding"]
         embed = Embed(
             base_url=config["api_base"],
             api_key=config["api_key"],
@@ -352,10 +353,10 @@ class TestEmbedRealAPI:
     @pytest.mark.skip_if_no_config
     def test_embed_real_api_with_model_override(self, test_config, has_real_api_config):
         """Test embedding with model override using real API"""
-        if not has_real_api_config or "embed_local_qwen3" not in test_config:
+        if not has_real_api_config or "embedding" not in test_config:
             pytest.skip("No real API config available")
 
-        config = test_config["embed_local_qwen3"]
+        config = test_config["embedding"]
         embed = Embed(
             base_url=config["api_base"],
             api_key=config["api_key"],

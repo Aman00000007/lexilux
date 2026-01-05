@@ -5,12 +5,13 @@ Provides a simple, function-like API for chat completions with unified usage tra
 """
 
 from __future__ import annotations
+
 import json
-from typing import Dict, Iterator, List, Literal, Optional, Sequence, Union, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, Iterator, Literal, Sequence, Union
 
 import requests
 
-from lexilux.usage import Usage, ResultBase, Json
+from lexilux.usage import Json, ResultBase, Usage
 
 if TYPE_CHECKING:
     pass
@@ -27,6 +28,11 @@ class ChatResult(ResultBase):
 
     Attributes:
         text: The generated text content.
+        finish_reason: Reason why the generation stopped. Possible values:
+            - "stop": Model stopped naturally or hit stop sequence
+            - "length": Reached max_tokens limit
+            - "content_filter": Content was filtered
+            - None: Unknown or not provided
         usage: Usage statistics.
         raw: Raw API response.
 
@@ -36,19 +42,30 @@ class ChatResult(ResultBase):
         "Hello! How can I help you?"
         >>> print(result.usage.total_tokens)
         42
+        >>> print(result.finish_reason)
+        "stop"
     """
 
-    def __init__(self, *, text: str, usage: Usage, raw: Optional[Json] = None):
+    def __init__(
+        self,
+        *,
+        text: str,
+        usage: Usage,
+        finish_reason: str | None = None,
+        raw: Json | None = None,
+    ):
         """
         Initialize ChatResult.
 
         Args:
             text: Generated text content.
             usage: Usage statistics.
+            finish_reason: Reason why generation stopped.
             raw: Raw API response.
         """
         super().__init__(usage=usage, raw=raw)
         self.text = text
+        self.finish_reason = finish_reason
 
     def __str__(self) -> str:
         """Return the text content when converted to string."""
@@ -56,7 +73,7 @@ class ChatResult(ResultBase):
 
     def __repr__(self) -> str:
         """Return string representation."""
-        return f"ChatResult(text={self.text!r}, usage={self.usage!r})"
+        return f"ChatResult(text={self.text!r}, finish_reason={self.finish_reason!r}, usage={self.usage!r})"
 
 
 class ChatStreamChunk(ResultBase):
@@ -67,12 +84,19 @@ class ChatStreamChunk(ResultBase):
 
     - delta: The incremental text content (may be empty)
     - done: Whether this is the final chunk
+    - finish_reason: Reason why generation stopped (only set when done=True).
+        Possible values:
+        - "stop": Model stopped naturally or hit stop sequence
+        - "length": Reached max_tokens limit
+        - "content_filter": Content was filtered
+        - None: Still generating (intermediate chunks) or unknown
     - usage: Usage statistics (may be empty/None for intermediate chunks,
       complete only in the final chunk when include_usage=True)
 
     Attributes:
         delta: Incremental text content.
         done: Whether this is the final chunk.
+        finish_reason: Reason why generation stopped (None for intermediate chunks).
         usage: Usage statistics (may be incomplete for intermediate chunks).
         raw: Raw chunk data.
 
@@ -81,6 +105,7 @@ class ChatStreamChunk(ResultBase):
         ...     print(chunk.delta, end="")
         ...     if chunk.done:
         ...         print(f"\\nUsage: {chunk.usage.total_tokens}")
+        ...         print(f"Finish reason: {chunk.finish_reason}")
     """
 
     def __init__(
@@ -89,7 +114,8 @@ class ChatStreamChunk(ResultBase):
         delta: str,
         done: bool,
         usage: Usage,
-        raw: Optional[Json] = None,
+        finish_reason: str | None = None,
+        raw: Json | None = None,
     ):
         """
         Initialize ChatStreamChunk.
@@ -98,15 +124,17 @@ class ChatStreamChunk(ResultBase):
             delta: Incremental text content.
             done: Whether this is the final chunk.
             usage: Usage statistics.
+            finish_reason: Reason why generation stopped.
             raw: Raw chunk data.
         """
         super().__init__(usage=usage, raw=raw)
         self.delta = delta
         self.done = done
+        self.finish_reason = finish_reason
 
     def __repr__(self) -> str:
         """Return string representation."""
-        return f"ChatStreamChunk(delta={self.delta!r}, done={self.done}, usage={self.usage!r})"
+        return f"ChatStreamChunk(delta={self.delta!r}, done={self.done}, finish_reason={self.finish_reason!r}, usage={self.usage!r})"
 
 
 class Chat:
@@ -133,10 +161,11 @@ class Chat:
         self,
         *,
         base_url: str,
-        api_key: Optional[str] = None,
-        model: Optional[str] = None,
+        api_key: str | None = None,
+        model: str | None = None,
         timeout_s: float = 60.0,
-        headers: Optional[Dict[str, str]] = None,
+        headers: dict[str, str] | None = None,
+        proxies: dict[str, str] | None = None,
     ):
         """
         Initialize Chat client.
@@ -147,12 +176,16 @@ class Chat:
             model: Default model to use (can be overridden in __call__).
             timeout_s: Request timeout in seconds.
             headers: Additional headers to include in requests.
+            proxies: Optional proxy configuration dict (e.g., {"http": "http://proxy:port"}).
+                    If None, uses environment variables (HTTP_PROXY, HTTPS_PROXY).
+                    To disable proxies, pass {}.
         """
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
         self.model = model
         self.timeout_s = timeout_s
         self.headers = headers or {}
+        self.proxies = proxies  # None means use environment variables
 
         # Set default headers
         if self.api_key:
@@ -162,8 +195,8 @@ class Chat:
     def _normalize_messages(
         self,
         messages: MessagesLike,
-        system: Optional[str] = None,
-    ) -> List[Dict[str, str]]:
+        system: str | None = None,
+    ) -> list[dict[str, str]]:
         """
         Normalize messages input to a list of message dictionaries.
 
@@ -189,7 +222,7 @@ class Chat:
             >>> chat._normalize_messages("hi", system="You are helpful")
             [{"role": "system", "content": "You are helpful"}, {"role": "user", "content": "hi"}]
         """
-        result: List[Dict[str, str]] = []
+        result: list[dict[str, str]] = []
 
         # Add system message if provided
         if system:
@@ -245,16 +278,41 @@ class Chat:
             details=usage_data,
         )
 
+    @staticmethod
+    def _normalize_finish_reason(finish_reason: Any) -> str | None:
+        """
+        Normalize finish_reason to a valid string or None.
+
+        Handles cases where compatible services may return invalid values:
+        - None -> None
+        - Empty string "" -> None
+        - Valid string ("stop", "length", "content_filter") -> as-is
+        - Other types (int, bool, etc.) -> None (defensive)
+
+        Args:
+            finish_reason: Raw finish_reason value from API.
+
+        Returns:
+            Normalized finish_reason (str or None).
+        """
+        if finish_reason is None:
+            return None
+        if isinstance(finish_reason, str):
+            # Empty string should be treated as None
+            return finish_reason if finish_reason else None
+        # For any other type (int, bool, list, etc.), return None defensively
+        return None
+
     def __call__(
         self,
         messages: MessagesLike,
         *,
-        model: Optional[str] = None,
-        system: Optional[str] = None,
+        model: str | None = None,
+        system: str | None = None,
         temperature: float = 0.7,
-        max_tokens: Optional[int] = None,
-        stop: Optional[Union[str, Sequence[str]]] = None,
-        extra: Optional[Json] = None,
+        max_tokens: int | None = None,
+        stop: str | Sequence[str] | None = None,
+        extra: Json | None = None,
         return_raw: bool = False,
     ) -> ChatResult:
         """
@@ -310,6 +368,7 @@ class Chat:
             json=payload,
             headers=self.headers,
             timeout=self.timeout_s,
+            proxies=self.proxies,
         )
         response.raise_for_status()
 
@@ -320,7 +379,18 @@ class Chat:
         if not choices:
             raise ValueError("No choices in API response")
 
-        text = choices[0].get("message", {}).get("content", "")
+        choice = choices[0]
+        if not isinstance(choice, dict):
+            raise ValueError(f"Invalid choice format: expected dict, got {type(choice)}")
+
+        # Extract text content
+        message = choice.get("message", {})
+        if not isinstance(message, dict):
+            message = {}
+        text = message.get("content", "") or ""
+
+        # Normalize finish_reason (defensive against invalid implementations)
+        finish_reason = self._normalize_finish_reason(choice.get("finish_reason"))
 
         # Parse usage
         usage = self._parse_usage(response_data)
@@ -329,6 +399,7 @@ class Chat:
         return ChatResult(
             text=text,
             usage=usage,
+            finish_reason=finish_reason,
             raw=response_data if return_raw else {},
         )
 
@@ -336,12 +407,12 @@ class Chat:
         self,
         messages: MessagesLike,
         *,
-        model: Optional[str] = None,
-        system: Optional[str] = None,
+        model: str | None = None,
+        system: str | None = None,
         temperature: float = 0.7,
-        max_tokens: Optional[int] = None,
-        stop: Optional[Union[str, Sequence[str]]] = None,
-        extra: Optional[Json] = None,
+        max_tokens: int | None = None,
+        stop: str | Sequence[str] | None = None,
+        extra: Json | None = None,
         include_usage: bool = True,
         return_raw_events: bool = False,
     ) -> Iterator[ChatStreamChunk]:
@@ -405,12 +476,13 @@ class Chat:
             headers=self.headers,
             timeout=self.timeout_s,
             stream=True,
+            proxies=self.proxies,
         )
         response.raise_for_status()
 
         # Parse SSE stream
         accumulated_text = ""
-        final_usage: Optional[Usage] = None
+        final_usage: Usage | None = None
 
         for line in response.iter_lines():
             if not line:
@@ -430,6 +502,7 @@ class Chat:
                     delta="",
                     done=True,
                     usage=final_usage,
+                    finish_reason=None,  # [DONE] doesn't provide finish_reason
                     raw={"done": True} if return_raw_events else {},
                 )
                 break
@@ -445,7 +518,8 @@ class Chat:
                 continue
 
             choice = choices[0]
-            if not choice:
+            if not isinstance(choice, dict):
+                # Skip invalid choice format
                 continue
 
             delta = choice.get("delta") or {}
@@ -453,8 +527,9 @@ class Chat:
                 delta = {}
             content = delta.get("content") or ""
 
-            # Check if this is the final chunk (finish_reason is set)
-            finish_reason = choice.get("finish_reason")
+            # Normalize finish_reason (defensive against invalid implementations)
+            finish_reason = self._normalize_finish_reason(choice.get("finish_reason"))
+            # done is True when finish_reason is a non-empty string
             done = finish_reason is not None
 
             # Accumulate text
@@ -477,5 +552,6 @@ class Chat:
                 delta=content,
                 done=done,
                 usage=usage,
+                finish_reason=finish_reason,
                 raw=event_data if return_raw_events else {},
             )

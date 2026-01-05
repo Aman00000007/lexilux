@@ -16,11 +16,11 @@ class TestRerankOpenAIModeReal:
     @pytest.mark.integration
     @pytest.mark.skip_if_no_config
     def test_openai_mode_jina_basic(self, test_config, has_real_api_config):
-        """Test OpenAI mode with rerank_local_qwen3"""
-        if not has_real_api_config or "rerank_local_qwen3" not in test_config:
+        """Test OpenAI mode with reranker"""
+        if not has_real_api_config or "reranker" not in test_config:
             pytest.skip("No real API config available")
 
-        config = test_config["rerank_local_qwen3"]
+        config = test_config["reranker"]
         rerank = Rerank(
             base_url=config["api_base"],
             api_key=config["api_key"],
@@ -46,11 +46,11 @@ class TestRerankOpenAIModeReal:
     @pytest.mark.integration
     @pytest.mark.skip_if_no_config
     def test_openai_mode_jina_with_documents(self, test_config, has_real_api_config):
-        """Test OpenAI mode with rerank_local_qwen3 and include_docs=True"""
-        if not has_real_api_config or "rerank_local_qwen3" not in test_config:
+        """Test OpenAI mode with reranker and include_docs=True"""
+        if not has_real_api_config or "reranker" not in test_config:
             pytest.skip("No real API config available")
 
-        config = test_config["rerank_local_qwen3"]
+        config = test_config["reranker"]
         rerank = Rerank(
             base_url=config["api_base"],
             api_key=config["api_key"],
@@ -73,11 +73,11 @@ class TestRerankOpenAIModeReal:
     @pytest.mark.integration
     @pytest.mark.skip_if_no_config
     def test_openai_mode_jina_with_top_k(self, test_config, has_real_api_config):
-        """Test OpenAI mode with rerank_local_qwen3 and top_k parameter"""
-        if not has_real_api_config or "rerank_local_qwen3" not in test_config:
+        """Test OpenAI mode with reranker and top_k parameter"""
+        if not has_real_api_config or "reranker" not in test_config:
             pytest.skip("No real API config available")
 
-        config = test_config["rerank_local_qwen3"]
+        config = test_config["reranker"]
         rerank = Rerank(
             base_url=config["api_base"],
             api_key=config["api_key"],

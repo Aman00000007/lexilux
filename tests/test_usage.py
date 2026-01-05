@@ -2,7 +2,7 @@
 Usage and ResultBase test cases
 """
 
-from lexilux.usage import Usage, ResultBase, Json
+from lexilux.usage import Json, ResultBase, Usage
 
 
 class TestUsage:

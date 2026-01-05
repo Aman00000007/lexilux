@@ -2,8 +2,9 @@
 Tokenizer API client test cases
 """
 
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 
 from lexilux import Tokenizer, TokenizeResult
 

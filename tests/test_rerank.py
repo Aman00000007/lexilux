@@ -3,6 +3,7 @@ Rerank API client test cases
 """
 
 import json
+
 import pytest
 import responses
 
@@ -353,11 +354,11 @@ class TestRerankOpenAIMode:
     @pytest.mark.integration
     @pytest.mark.skip_if_no_config
     def test_openai_mode_basic(self, test_config, has_real_api_config):
-        """Test OpenAI mode basic rerank call with real API (rerank_local_qwen3)"""
-        if not has_real_api_config or "rerank_local_qwen3" not in test_config:
+        """Test OpenAI mode basic rerank call with real API (reranker)"""
+        if not has_real_api_config or "reranker" not in test_config:
             pytest.skip("No real API config available")
 
-        config = test_config["rerank_local_qwen3"]
+        config = test_config["reranker"]
         rerank = Rerank(
             base_url=config["api_base"],
             api_key=config["api_key"],
@@ -380,10 +381,10 @@ class TestRerankOpenAIMode:
     @pytest.mark.skip_if_no_config
     def test_openai_mode_with_return_documents(self, test_config, has_real_api_config):
         """Test OpenAI mode with return_documents=True using real API"""
-        if not has_real_api_config or "rerank_local_qwen3" not in test_config:
+        if not has_real_api_config or "reranker" not in test_config:
             pytest.skip("No real API config available")
 
-        config = test_config["rerank_local_qwen3"]
+        config = test_config["reranker"]
         rerank = Rerank(
             base_url=config["api_base"],
             api_key=config["api_key"],
@@ -410,10 +411,10 @@ class TestRerankOpenAIMode:
     @pytest.mark.skip_if_no_config
     def test_openai_mode_with_top_n(self, test_config, has_real_api_config):
         """Test OpenAI mode with top_n parameter using real API"""
-        if not has_real_api_config or "rerank_local_qwen3" not in test_config:
+        if not has_real_api_config or "reranker" not in test_config:
             pytest.skip("No real API config available")
 
-        config = test_config["rerank_local_qwen3"]
+        config = test_config["reranker"]
         rerank = Rerank(
             base_url=config["api_base"],
             api_key=config["api_key"],
@@ -436,10 +437,10 @@ class TestRerankOpenAIMode:
     @pytest.mark.skip_if_no_config
     def test_openai_mode_request_format(self, test_config, has_real_api_config):
         """Test OpenAI mode request format with real API"""
-        if not has_real_api_config or "rerank_local_qwen3" not in test_config:
+        if not has_real_api_config or "reranker" not in test_config:
             pytest.skip("No real API config available")
 
-        config = test_config["rerank_local_qwen3"]
+        config = test_config["reranker"]
         rerank = Rerank(
             base_url=config["api_base"],
             api_key=config["api_key"],
@@ -459,10 +460,10 @@ class TestRerankOpenAIMode:
     @pytest.mark.skip_if_no_config
     def test_openai_mode_with_extra_params(self, test_config, has_real_api_config):
         """Test OpenAI mode with extra parameters using real API"""
-        if not has_real_api_config or "rerank_local_qwen3" not in test_config:
+        if not has_real_api_config or "reranker" not in test_config:
             pytest.skip("No real API config available")
 
-        config = test_config["rerank_local_qwen3"]
+        config = test_config["reranker"]
         rerank = Rerank(
             base_url=config["api_base"],
             api_key=config["api_key"],
@@ -482,10 +483,10 @@ class TestRerankOpenAIMode:
     @pytest.mark.skip_if_no_config
     def test_mode_override_in_call(self, test_config, has_real_api_config):
         """Test overriding mode in __call__ with real API"""
-        if not has_real_api_config or "rerank_local_qwen3" not in test_config:
+        if not has_real_api_config or "reranker" not in test_config:
             pytest.skip("No real API config available")
 
-        config = test_config["rerank_local_qwen3"]
+        config = test_config["reranker"]
         # Initialize with openai mode
         rerank = Rerank(
             base_url=config["api_base"],

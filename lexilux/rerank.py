@@ -6,12 +6,13 @@ Supports multiple provider modes: OpenAI-compatible and DashScope.
 """
 
 from __future__ import annotations
+
 from abc import ABC, abstractmethod
-from typing import Dict, List, Optional, Sequence, Tuple, Union, TYPE_CHECKING
+from typing import TYPE_CHECKING, List, Sequence, Tuple
 
 import requests
 
-from lexilux.usage import Usage, ResultBase, Json
+from lexilux.usage import Json, ResultBase, Usage
 
 if TYPE_CHECKING:
     pass
@@ -49,9 +50,9 @@ class RerankResult(ResultBase):
     def __init__(
         self,
         *,
-        results: Union[Ranked, RankedWithDoc],
+        results: Ranked | RankedWithDoc,
         usage: Usage,
-        raw: Optional[Json] = None,
+        raw: Json | None = None,
     ):
         """
         Initialize RerankResult.
@@ -80,9 +81,10 @@ class RerankModeHandler(ABC):
     def __init__(
         self,
         base_url: str,
-        api_key: Optional[str],
-        headers: Dict[str, str],
+        api_key: str | None,
+        headers: dict[str, str],
         timeout_s: float,
+        proxies: dict[str, str] | None = None,
     ):
         """
         Initialize mode handler.
@@ -92,11 +94,13 @@ class RerankModeHandler(ABC):
             api_key: API key for authentication.
             headers: HTTP headers.
             timeout_s: Request timeout in seconds.
+            proxies: Optional proxy configuration dict.
         """
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
         self.headers = headers
         self.timeout_s = timeout_s
+        self.proxies = proxies
 
     @abstractmethod
     def build_request(
@@ -104,10 +108,10 @@ class RerankModeHandler(ABC):
         query: str,
         docs: Sequence[str],
         model: str,
-        top_k: Optional[int],
+        top_k: int | None,
         include_docs: bool,
-        extra: Optional[Json],
-    ) -> Tuple[str, Json]:
+        extra: Json | None,
+    ) -> tuple[str, Json]:
         """
         Build HTTP request for this mode.
 
@@ -130,8 +134,8 @@ class RerankModeHandler(ABC):
         response_data: Json,
         docs: Sequence[str],
         include_docs: bool,
-        top_k: Optional[int],
-    ) -> Tuple[List[Tuple[int, float, Optional[str]]], Usage]:
+        top_k: int | None,
+    ) -> tuple[list[tuple[int, float, str | None]], Usage]:
         """
         Parse API response for this mode.
 
@@ -166,6 +170,7 @@ class RerankModeHandler(ABC):
             json=payload,
             headers=self.headers,
             timeout=self.timeout_s,
+            proxies=self.proxies,
         )
         response.raise_for_status()
         return response.json()
@@ -191,10 +196,10 @@ class RerankModeHandler(ABC):
 
     @staticmethod
     def _normalize_results(
-        parsed_results: List[Tuple[int, float, Optional[str]]],
+        parsed_results: list[tuple[int, float, str | None]],
         include_docs: bool,
-        top_k: Optional[int],
-    ) -> Union[Ranked, RankedWithDoc]:
+        top_k: int | None,
+    ) -> Ranked | RankedWithDoc:
         """
         Normalize parsed results to unified format.
 
@@ -215,7 +220,7 @@ class RerankModeHandler(ABC):
 
         # Format results based on include_docs
         if include_docs:
-            results: Union[Ranked, RankedWithDoc] = [
+            results: Ranked | RankedWithDoc = [
                 (idx, score, doc) for idx, score, doc in parsed_results if doc is not None
             ]
         else:
@@ -239,10 +244,10 @@ class OpenAICompatibleHandler(RerankModeHandler):
         query: str,
         docs: Sequence[str],
         model: str,
-        top_k: Optional[int],
+        top_k: int | None,
         include_docs: bool,
-        extra: Optional[Json],
-    ) -> Tuple[str, Json]:
+        extra: Json | None,
+    ) -> tuple[str, Json]:
         """Build OpenAI-compatible request."""
         payload: Json = {
             "model": model,
@@ -272,14 +277,14 @@ class OpenAICompatibleHandler(RerankModeHandler):
         response_data: Json,
         docs: Sequence[str],
         include_docs: bool,
-        top_k: Optional[int],
-    ) -> Tuple[List[Tuple[int, float, Optional[str]]], Usage]:
+        top_k: int | None,
+    ) -> tuple[list[tuple[int, float, str | None]], Usage]:
         """Parse OpenAI-compatible response."""
         results_data = response_data.get("results", [])
         if not results_data:
             raise ValueError("No results in API response")
 
-        parsed_results: List[Tuple[int, float, Optional[str]]] = []
+        parsed_results: list[tuple[int, float, str | None]] = []
         for item in results_data:
             if not isinstance(item, dict):
                 raise ValueError(f"Unexpected result format: {item} (type: {type(item)})")
@@ -317,10 +322,10 @@ class DashScopeHandler(RerankModeHandler):
         query: str,
         docs: Sequence[str],
         model: str,
-        top_k: Optional[int],
+        top_k: int | None,
         include_docs: bool,
-        extra: Optional[Json],
-    ) -> Tuple[str, Json]:
+        extra: Json | None,
+    ) -> tuple[str, Json]:
         """Build DashScope request."""
         payload: Json = {
             "model": model,
@@ -352,15 +357,15 @@ class DashScopeHandler(RerankModeHandler):
         response_data: Json,
         docs: Sequence[str],
         include_docs: bool,
-        top_k: Optional[int],
-    ) -> Tuple[List[Tuple[int, float, Optional[str]]], Usage]:
+        top_k: int | None,
+    ) -> tuple[list[tuple[int, float, str | None]], Usage]:
         """Parse DashScope response."""
         output = response_data.get("output", {})
         results_data = output.get("results", [])
         if not results_data:
             raise ValueError("No results in API response")
 
-        parsed_results: List[Tuple[int, float, Optional[str]]] = []
+        parsed_results: list[tuple[int, float, str | None]] = []
         for item in results_data:
             if not isinstance(item, dict):
                 raise ValueError(f"Unexpected result format: {item} (type: {type(item)})")
@@ -414,7 +419,7 @@ class Rerank:
     """
 
     # Mode handler registry
-    _HANDLERS: Dict[str, type[RerankModeHandler]] = {
+    _HANDLERS: dict[str, type[RerankModeHandler]] = {
         "openai": OpenAICompatibleHandler,
         "dashscope": DashScopeHandler,
     }
@@ -423,11 +428,12 @@ class Rerank:
         self,
         *,
         base_url: str,
-        api_key: Optional[str] = None,
-        model: Optional[str] = None,
+        api_key: str | None = None,
+        model: str | None = None,
         mode: str = "openai",
         timeout_s: float = 60.0,
-        headers: Optional[Dict[str, str]] = None,
+        headers: dict[str, str] | None = None,
+        proxies: dict[str, str] | None = None,
     ):
         """
         Initialize Rerank client.
@@ -440,6 +446,9 @@ class Rerank:
                   Default is "openai".
             timeout_s: Request timeout in seconds.
             headers: Additional headers to include in requests.
+            proxies: Optional proxy configuration dict (e.g., {"http": "http://proxy:port"}).
+                    If None, uses environment variables (HTTP_PROXY, HTTPS_PROXY).
+                    To disable proxies, pass {}.
 
         Raises:
             ValueError: If mode is not supported.
@@ -454,6 +463,7 @@ class Rerank:
         self.mode = mode
         self.timeout_s = timeout_s
         self.headers = headers or {}
+        self.proxies = proxies  # None means use environment variables
 
         # Set default headers
         if self.api_key:
@@ -467,6 +477,7 @@ class Rerank:
             api_key=self.api_key,
             headers=self.headers,
             timeout_s=self.timeout_s,
+            proxies=self.proxies,
         )
 
     def __call__(
@@ -474,12 +485,12 @@ class Rerank:
         query: str,
         docs: Sequence[str],
         *,
-        model: Optional[str] = None,
-        top_k: Optional[int] = None,
+        model: str | None = None,
+        top_k: int | None = None,
         include_docs: bool = False,
-        extra: Optional[Json] = None,
+        extra: Json | None = None,
         return_raw: bool = False,
-        mode: Optional[str] = None,
+        mode: str | None = None,
     ) -> RerankResult:
         """
         Make a rerank request.

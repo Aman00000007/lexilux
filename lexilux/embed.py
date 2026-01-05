@@ -5,11 +5,12 @@ Provides a simple, function-like API for text embeddings with unified usage trac
 """
 
 from __future__ import annotations
-from typing import Dict, List, Optional, Sequence, Union, TYPE_CHECKING
+
+from typing import TYPE_CHECKING, List, Sequence
 
 import requests
 
-from lexilux.usage import Usage, ResultBase, Json
+from lexilux.usage import Json, ResultBase, Usage
 
 if TYPE_CHECKING:
     pass
@@ -42,9 +43,9 @@ class EmbedResult(ResultBase):
     def __init__(
         self,
         *,
-        vectors: Union[Vector, List[Vector]],
+        vectors: Vector | list[Vector],
         usage: Usage,
-        raw: Optional[Json] = None,
+        raw: Json | None = None,
     ):
         """
         Initialize EmbedResult.
@@ -86,10 +87,11 @@ class Embed:
         self,
         *,
         base_url: str,
-        api_key: Optional[str] = None,
-        model: Optional[str] = None,
+        api_key: str | None = None,
+        model: str | None = None,
         timeout_s: float = 60.0,
-        headers: Optional[Dict[str, str]] = None,
+        headers: dict[str, str] | None = None,
+        proxies: dict[str, str] | None = None,
     ):
         """
         Initialize Embed client.
@@ -100,12 +102,16 @@ class Embed:
             model: Default model to use (can be overridden in __call__).
             timeout_s: Request timeout in seconds.
             headers: Additional headers to include in requests.
+            proxies: Optional proxy configuration dict (e.g., {"http": "http://proxy:port"}).
+                    If None, uses environment variables (HTTP_PROXY, HTTPS_PROXY).
+                    To disable proxies, pass {}.
         """
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
         self.model = model
         self.timeout_s = timeout_s
         self.headers = headers or {}
+        self.proxies = proxies  # None means use environment variables
 
         # Set default headers
         if self.api_key:
@@ -132,10 +138,10 @@ class Embed:
 
     def __call__(
         self,
-        input: Union[str, Sequence[str]],
+        input: str | Sequence[str],
         *,
-        model: Optional[str] = None,
-        extra: Optional[Json] = None,
+        model: str | None = None,
+        extra: Json | None = None,
         return_raw: bool = False,
     ) -> EmbedResult:
         """
@@ -181,6 +187,7 @@ class Embed:
             json=payload,
             headers=self.headers,
             timeout=self.timeout_s,
+            proxies=self.proxies,
         )
         response.raise_for_status()
 
@@ -192,10 +199,10 @@ class Embed:
             raise ValueError("No data in API response")
 
         # Extract vectors
-        vectors: List[Vector] = [item["embedding"] for item in data_list]
+        vectors: list[Vector] = [item["embedding"] for item in data_list]
 
         # Return single vector or list of vectors based on input
-        result_vectors: Union[Vector, List[Vector]] = vectors[0] if is_single else vectors
+        result_vectors: Vector | list[Vector] = vectors[0] if is_single else vectors
 
         # Parse usage
         usage = self._parse_usage(response_data)

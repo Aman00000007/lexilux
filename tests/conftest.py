@@ -3,9 +3,19 @@ Pytest configuration and shared fixtures for lexilux tests.
 """
 
 import json
+import os
 import sys
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
+
+# Disable proxies for tests to avoid proxy-related issues
+# This ensures tests connect directly to endpoints
+os.environ.pop("HTTP_PROXY", None)
+os.environ.pop("HTTPS_PROXY", None)
+os.environ.pop("http_proxy", None)
+os.environ.pop("https_proxy", None)
+os.environ.pop("ALL_PROXY", None)
+os.environ.pop("all_proxy", None)
 
 # Add project root to Python path so tests can import lexilux
 project_root = Path(__file__).parent.parent
@@ -28,7 +38,7 @@ def load_test_config() -> Optional[Dict[str, Any]]:
         try:
             with open(config_path) as f:
                 return json.load(f)
-        except (json.JSONDecodeError, IOError):
+        except (OSError, json.JSONDecodeError):
             return None
 
     return None

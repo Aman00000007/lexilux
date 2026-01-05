@@ -3,6 +3,7 @@ Chat API client test cases (non-streaming)
 """
 
 import json
+
 import pytest
 import responses
 
@@ -342,6 +343,116 @@ class TestChatCall:
         assert result.usage.total_tokens is None
         assert result.usage.input_tokens is None
         assert result.usage.output_tokens is None
+
+    @responses.activate
+    def test_call_with_finish_reason_stop(self):
+        """Test chat completion with finish_reason='stop'"""
+        chat = Chat(base_url="https://api.example.com/v1", api_key="test-key", model="gpt-4")
+
+        responses.add(
+            responses.POST,
+            "https://api.example.com/v1/chat/completions",
+            json={
+                "choices": [{"message": {"content": "Hello!"}, "finish_reason": "stop"}],
+                "usage": {"total_tokens": 10},
+            },
+            status=200,
+        )
+
+        result = chat("Hello")
+        assert result.finish_reason == "stop"
+
+    @responses.activate
+    def test_call_with_finish_reason_length(self):
+        """Test chat completion with finish_reason='length'"""
+        chat = Chat(base_url="https://api.example.com/v1", api_key="test-key", model="gpt-4")
+
+        responses.add(
+            responses.POST,
+            "https://api.example.com/v1/chat/completions",
+            json={
+                "choices": [{"message": {"content": "Hello"}, "finish_reason": "length"}],
+                "usage": {"total_tokens": 10},
+            },
+            status=200,
+        )
+
+        result = chat("Hello")
+        assert result.finish_reason == "length"
+
+    @responses.activate
+    def test_call_with_finish_reason_content_filter(self):
+        """Test chat completion with finish_reason='content_filter'"""
+        chat = Chat(base_url="https://api.example.com/v1", api_key="test-key", model="gpt-4")
+
+        responses.add(
+            responses.POST,
+            "https://api.example.com/v1/chat/completions",
+            json={
+                "choices": [{"message": {"content": ""}, "finish_reason": "content_filter"}],
+                "usage": {"total_tokens": 10},
+            },
+            status=200,
+        )
+
+        result = chat("Hello")
+        assert result.finish_reason == "content_filter"
+
+    @responses.activate
+    def test_call_with_finish_reason_none(self):
+        """Test chat completion with finish_reason=None (missing field)"""
+        chat = Chat(base_url="https://api.example.com/v1", api_key="test-key", model="gpt-4")
+
+        responses.add(
+            responses.POST,
+            "https://api.example.com/v1/chat/completions",
+            json={
+                "choices": [{"message": {"content": "Hello!"}}],
+                "usage": {"total_tokens": 10},
+            },
+            status=200,
+        )
+
+        result = chat("Hello")
+        assert result.finish_reason is None
+
+    @responses.activate
+    def test_call_with_finish_reason_empty_string(self):
+        """Test chat completion with finish_reason='' (defensive handling)"""
+        chat = Chat(base_url="https://api.example.com/v1", api_key="test-key", model="gpt-4")
+
+        responses.add(
+            responses.POST,
+            "https://api.example.com/v1/chat/completions",
+            json={
+                "choices": [{"message": {"content": "Hello!"}, "finish_reason": ""}],
+                "usage": {"total_tokens": 10},
+            },
+            status=200,
+        )
+
+        result = chat("Hello")
+        # Empty string should be normalized to None
+        assert result.finish_reason is None
+
+    @responses.activate
+    def test_call_with_finish_reason_invalid_type(self):
+        """Test chat completion with invalid finish_reason type (defensive handling)"""
+        chat = Chat(base_url="https://api.example.com/v1", api_key="test-key", model="gpt-4")
+
+        responses.add(
+            responses.POST,
+            "https://api.example.com/v1/chat/completions",
+            json={
+                "choices": [{"message": {"content": "Hello!"}, "finish_reason": 123}],
+                "usage": {"total_tokens": 10},
+            },
+            status=200,
+        )
+
+        result = chat("Hello")
+        # Invalid type should be normalized to None
+        assert result.finish_reason is None
 
 
 class TestChatResult:

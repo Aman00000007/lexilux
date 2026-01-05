@@ -30,9 +30,9 @@ class TestRerankModesConsistency:
 
         results_by_mode = {}
 
-        # Test OpenAI mode (rerank_local_qwen3)
-        if "rerank_local_qwen3" in test_config:
-            config = test_config["rerank_local_qwen3"]
+        # Test OpenAI mode (reranker)
+        if "reranker" in test_config:
+            config = test_config["reranker"]
             rerank = Rerank(
                 base_url=config["api_base"],
                 api_key=config["api_key"],
@@ -66,13 +66,13 @@ class TestRerankModesConsistency:
             first_result = list(results_by_mode.values())[0]
             for mode, result in results_by_mode.items():
                 assert isinstance(result, RerankResult), f"{mode} mode should return RerankResult"
-                assert len(result.results) == len(
-                    first_result.results
-                ), f"{mode} mode should return same number of results"
+                assert len(result.results) == len(first_result.results), (
+                    f"{mode} mode should return same number of results"
+                )
                 assert isinstance(result.results[0], tuple), f"{mode} mode results should be tuples"
-                assert (
-                    len(result.results[0]) == 2
-                ), f"{mode} mode results should be (index, score) tuples"
+                assert len(result.results[0]) == 2, (
+                    f"{mode} mode results should be (index, score) tuples"
+                )
                 assert isinstance(result.usage, Usage), f"{mode} mode should return Usage object"
 
     @pytest.mark.integration
@@ -93,7 +93,7 @@ class TestRerankModesConsistency:
 
         # Test each available mode
         for config_key, mode_name in [
-            ("rerank_local_qwen3", "openai"),
+            ("reranker", "openai"),
             ("rerank_dashscope", "dashscope"),
         ]:
             if config_key in test_config:
@@ -112,9 +112,9 @@ class TestRerankModesConsistency:
             if len(result.results) > 1:
                 scores = [score for _, score in result.results]
                 # Scores should be sorted descending (higher is better)
-                assert all(
-                    scores[i] >= scores[i + 1] for i in range(len(scores) - 1)
-                ), f"{mode} mode should sort scores in descending order"
+                assert all(scores[i] >= scores[i + 1] for i in range(len(scores) - 1)), (
+                    f"{mode} mode should sort scores in descending order"
+                )
 
     @pytest.mark.integration
     @pytest.mark.skip_if_no_config
@@ -137,7 +137,7 @@ class TestRerankModesConsistency:
 
         # Test each available mode
         for config_key, mode_name in [
-            ("rerank_local_qwen3", "openai"),
+            ("reranker", "openai"),
             ("rerank_dashscope", "dashscope"),
         ]:
             if config_key in test_config:
@@ -153,9 +153,9 @@ class TestRerankModesConsistency:
 
         # Verify all modes respect top_k
         for mode, result in results_by_mode.items():
-            assert (
-                len(result.results) <= top_k
-            ), f"{mode} mode should return at most {top_k} results"
+            assert len(result.results) <= top_k, (
+                f"{mode} mode should return at most {top_k} results"
+            )
 
     @pytest.mark.integration
     @pytest.mark.skip_if_no_config
@@ -174,7 +174,7 @@ class TestRerankModesConsistency:
 
         # Test each available mode with include_docs=True
         for config_key, mode_name in [
-            ("rerank_local_qwen3", "openai"),
+            ("reranker", "openai"),
             ("rerank_dashscope", "dashscope"),
         ]:
             if config_key in test_config:
@@ -199,9 +199,9 @@ class TestRerankModesConsistency:
                     assert isinstance(doc, str), f"{mode} mode document should be string"
             else:
                 # Documents not included (provider limitation)
-                assert (
-                    len(result.results[0]) == 2
-                ), f"{mode} mode should return (index, score) when docs not available"
+                assert len(result.results[0]) == 2, (
+                    f"{mode} mode should return (index, score) when docs not available"
+                )
 
     @pytest.mark.integration
     @pytest.mark.skip_if_no_config
@@ -217,7 +217,7 @@ class TestRerankModesConsistency:
 
         # Test each available mode
         for config_key, mode_name in [
-            ("rerank_local_qwen3", "openai"),
+            ("reranker", "openai"),
             ("rerank_dashscope", "dashscope"),
         ]:
             if config_key in test_config:
@@ -255,7 +255,7 @@ class TestRerankModesConsistency:
 
         # Test each available mode
         for config_key, mode_name in [
-            ("rerank_local_qwen3", "openai"),
+            ("reranker", "openai"),
             ("rerank_dashscope", "dashscope"),
         ]:
             if config_key in test_config:
@@ -273,7 +273,7 @@ class TestRerankModesConsistency:
         for mode, result in results_by_mode.items():
             for idx, score in result.results:
                 assert isinstance(idx, int), f"{mode} mode should return integer indices"
-                assert (
-                    0 <= idx < len(docs)
-                ), f"{mode} mode index {idx} should be in range [0, {len(docs)})"
+                assert 0 <= idx < len(docs), (
+                    f"{mode} mode index {idx} should be in range [0, {len(docs)})"
+                )
                 assert isinstance(score, (int, float)), f"{mode} mode should return numeric scores"
