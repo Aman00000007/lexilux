@@ -8,518 +8,345 @@ Overview
 --------
 
 When a chat completion is stopped due to ``max_tokens`` limit (``finish_reason == "length"``),
-you may want to continue the generation. The ``ChatContinue`` class provides utilities
-for handling continuation requests and merging results.
+you may want to continue the generation. Lexilux provides multiple ways to handle this:
+
+1. **Chat.complete()** - Recommended for most cases, ensures complete response
+2. **Chat.continue_if_needed()** - Conditionally continue if truncated
+3. **ChatContinue.continue_request()** - Advanced control with full flexibility
 
 Key Features
 ------------
 
-1. **Continue Requests**: Automatically handle continuation when generation is cut off
-2. **Result Merging**: Seamlessly merge multiple results into a single complete response
-3. **Flexible Options**: Choose whether to add a continue prompt or send history directly
+1. **Automatic History Retrieval**: Works seamlessly with ``auto_history=True``
+2. **Multiple Continues**: Automatically continue multiple times if needed
+3. **Result Merging**: Automatically merge all continuation results
 4. **Usage Aggregation**: Automatically combine token usage from multiple requests
 
 When to Use
 -----------
 
-Use ``ChatContinue`` when:
+Use continuation when:
 
 * A response has ``finish_reason == "length"`` (cut off due to token limit)
-* You want to extend an incomplete response
-* You need to merge multiple continuation results
+* You need complete responses (e.g., JSON extraction)
 * You're working with long-form content generation
+* You want to ensure response completeness
 
-Basic Usage
------------
+Recommended Approach: Chat.complete()
+-------------------------------------
 
-Detecting Length Finish Reason
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-First, check if continuation is needed:
+The simplest and most recommended way to ensure complete responses:
 
 .. code-block:: python
 
-   from lexilux import Chat, ChatResult
+   from lexilux import Chat
 
-   chat = Chat(...)
-   result = chat("Write a long story", max_tokens=100)
+   chat = Chat(..., auto_history=True)
 
+   # Automatically handles truncation, returns complete result
+   result = chat.complete("Write a long JSON response", max_tokens=100)
+   json_data = json.loads(result.text)  # Guaranteed complete
+
+   # With error handling
+   try:
+       result = chat.complete("Very long response", max_tokens=50, max_continues=3)
+   except ChatIncompleteResponse as e:
+       print(f"Still incomplete after {e.continue_count} continues")
+       print(f"Received: {len(e.final_result.text)} chars")
+
+Key Features of complete():
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+* Automatically continues if ``finish_reason == "length"``
+* Supports multiple continues (``max_continues`` parameter)
+* Raises ``ChatIncompleteResponse`` if still truncated (if ``ensure_complete=True``)
+* Requires ``auto_history=True`` (for automatic history retrieval)
+
+Conditional Continue: Chat.continue_if_needed()
+------------------------------------------------
+
+Continue only if the result is truncated:
+
+.. code-block:: python
+
+   from lexilux import Chat
+
+   chat = Chat(..., auto_history=True)
+
+   result = chat("Long story", max_tokens=50)
+   
+   # Only continues if result.finish_reason == "length"
+   full_result = chat.continue_if_needed(result, max_continues=3)
+   
+   # If result.finish_reason != "length", returns result unchanged
+
+Advanced Control: ChatContinue.continue_request()
+---------------------------------------------------
+
+For advanced use cases requiring full control:
+
+Enhanced API (Recommended)
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The enhanced ``continue_request()`` supports automatic history retrieval,
+multiple continues, and automatic merging:
+
+.. code-block:: python
+
+   from lexilux import Chat, ChatContinue
+
+   chat = Chat(..., auto_history=True)
+
+   result = chat("Write a long story", max_tokens=50)
+   
    if result.finish_reason == "length":
-       print("Response was cut off, need to continue")
-       # Use ChatContinue to continue
+       # Automatic history retrieval, multiple continues, automatic merging
+       full_result = ChatContinue.continue_request(
+           chat,
+           result,  # Note: history parameter is optional when auto_history=True
+           max_continues=3
+       )
+       print(full_result.text)  # Complete merged text
 
-Continue with Prompt
-~~~~~~~~~~~~~~~~~~~~
+Key Parameters:
+~~~~~~~~~~~~~~~
 
-The simplest approach is to add a user continue prompt:
+* ``history``: Optional. If ``None`` and ``chat.auto_history=True``, automatically retrieved
+* ``max_continues``: Maximum number of continuation attempts (default: 1)
+* ``auto_merge``: If ``True``, automatically merge results (default: ``True``)
+* ``add_continue_prompt``: Whether to add a user continue message (default: ``True``)
+* ``continue_prompt``: User prompt for continuation (default: "continue")
+
+Return Types:
+~~~~~~~~~~~~~
+
+* If ``auto_merge=True``: Returns merged ``ChatResult``
+* If ``auto_merge=False``: Returns list of ``ChatResult`` instances
+
+Examples:
 
 .. code-block:: python
 
-   from lexilux import Chat, ChatContinue, ChatHistory
-
-   chat = Chat(...)
-   
-   # Initial request (gets cut off)
-   result1 = chat("Write a long story", max_tokens=100)
-   
+   # Basic usage (automatic history, single continue, auto merge)
+   result = chat("Story", max_tokens=50)
    if result.finish_reason == "length":
-       # Create history from the conversation
-       history = ChatHistory.from_chat_result("Write a long story", result1)
-       
-       # Continue with prompt
-       continue_result = ChatContinue.continue_request(
-           chat,
-           history,
-           result1,
-           add_continue_prompt=True,
-           continue_prompt="continue"
-       )
-       
-       # Merge results
-       full_result = ChatContinue.merge_results(result1, continue_result)
-       print(full_result.text)  # Complete story
+       full_result = ChatContinue.continue_request(chat, result)
 
-Continue Without Prompt
-~~~~~~~~~~~~~~~~~~~~~~~
+   # Multiple continues
+   result = chat("Very long story", max_tokens=30)
+   if result.finish_reason == "length":
+       full_result = ChatContinue.continue_request(chat, result, max_continues=3)
 
-You can also continue without adding a user prompt:
+   # Get all intermediate results
+   result = chat("Story", max_tokens=50)
+   if result.finish_reason == "length":
+       all_results = ChatContinue.continue_request(chat, result, auto_merge=False)
+       # all_results = [result, continue_result1, continue_result2, ...]
 
-.. code-block:: python
-
-   from lexilux import Chat, ChatContinue, ChatHistory
-
-   chat = Chat(...)
-   
-   result1 = chat("Write a long story", max_tokens=100)
-   
-   if result1.finish_reason == "length":
-       history = ChatHistory.from_chat_result("Write a long story", result1)
-       
-       # Continue without adding user prompt
-       continue_result = ChatContinue.continue_request(
-           chat,
-           history,
-           result1,
-           add_continue_prompt=False  # Send history directly
-       )
-       
-       full_result = ChatContinue.merge_results(result1, continue_result)
-
-Custom Continue Prompt
-~~~~~~~~~~~~~~~~~~~~~~~
-
-Customize the continue prompt:
-
-.. code-block:: python
-
-   continue_result = ChatContinue.continue_request(
-       chat,
-       history,
-       result1,
-       add_continue_prompt=True,
-       continue_prompt="Please continue from where you left off"
-   )
-
-Advanced Usage
---------------
-
-Multiple Continuations
-~~~~~~~~~~~~~~~~~~~~~~
-
-You can continue multiple times if needed:
-
-.. code-block:: python
-
-   from lexilux import Chat, ChatContinue, ChatHistory
-
-   chat = Chat(...)
-   
-   # Initial request
-   result1 = chat("Write a very long story", max_tokens=50)
-   history = ChatHistory.from_chat_result("Write a very long story", result1)
-   
-   results = [result1]
-   
-   # Continue until complete
-   while results[-1].finish_reason == "length":
-       continue_result = ChatContinue.continue_request(
-           chat, history, results[-1], add_continue_prompt=True
-       )
-       results.append(continue_result)
-       
-       # Update history for next iteration
-       history.append_result(continue_result)
-   
-   # Merge all results
-   full_result = ChatContinue.merge_results(*results)
-   print(f"Complete story: {full_result.text}")
-   print(f"Total tokens: {full_result.usage.total_tokens}")
-
-Continue with Parameters
-~~~~~~~~~~~~~~~~~~~~~~~~
-
-Pass additional parameters to the continue request:
-
-.. code-block:: python
-
-   continue_result = ChatContinue.continue_request(
-       chat,
-       history,
-       result1,
-       add_continue_prompt=True,
-       temperature=0.7,  # Additional parameters
-       max_tokens=200,   # New max_tokens for continuation
-   )
-
-Integration with Auto History
+Legacy API (Still Supported)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Works seamlessly with auto_history:
+The legacy API is still supported for backward compatibility:
+
+.. code-block:: python
+
+   from lexilux import Chat, ChatContinue, ChatHistory
+
+   chat = Chat(...)
+   
+   result = chat("Write a long story", max_tokens=50)
+   
+   if result.finish_reason == "length":
+       # Manual history creation
+       history = ChatHistory.from_chat_result("Write a long story", result)
+       
+       # Continue
+       continue_result = ChatContinue.continue_request(
+           chat,
+           history,  # Required in legacy API
+           result,
+           add_continue_prompt=True
+       )
+       
+       # Manual merging
+       full_result = ChatContinue.merge_results(result, continue_result)
+
+Result Merging
+--------------
+
+The ``merge_results()`` method combines multiple results:
+
+.. code-block:: python
+
+   from lexilux import ChatContinue
+
+   result1 = chat("Story part 1", max_tokens=50)
+   result2 = chat("Story part 2", max_tokens=50)
+   
+   merged = ChatContinue.merge_results(result1, result2)
+   # merged.text = result1.text + result2.text
+   # merged.usage.total_tokens = result1.usage.total_tokens + result2.usage.total_tokens
+
+Common Patterns
+---------------
+
+Pattern 1: Ensure Complete Response (Recommended)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Use ``chat.complete()`` for scenarios requiring complete responses:
 
 .. code-block:: python
 
    chat = Chat(..., auto_history=True)
    
-   result1 = chat("Write a story", max_tokens=100)
+   # JSON extraction
+   result = chat.complete("Extract data as JSON", max_tokens=100)
+   json_data = json.loads(result.text)  # Guaranteed complete
    
-   if result1.finish_reason == "length":
-       # Get auto-recorded history
-       history = chat.get_history()
-       
-       # Continue
-       continue_result = ChatContinue.continue_request(
-           chat, history, result1, add_continue_prompt=True
-       )
-       
-       # Auto history is updated with continue prompt and response
-       updated_history = chat.get_history()
-       
-       # Merge results
-       full_result = ChatContinue.merge_results(result1, continue_result)
+   # Long-form content
+   result = chat.complete("Write a comprehensive guide", max_tokens=200)
 
-Common Patterns
----------------
+Pattern 2: Conditional Continue
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Pattern 1: Simple Continue
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-The most common pattern - continue once:
+Use ``chat.continue_if_needed()`` when you want to continue only if needed:
 
 .. code-block:: python
 
-   result = chat("Long content", max_tokens=100)
+   chat = Chat(..., auto_history=True)
    
+   result = chat("Response", max_tokens=100)
+   # Automatically continues if truncated, otherwise returns result unchanged
+   full_result = chat.continue_if_needed(result, max_continues=3)
+
+Pattern 3: Advanced Control
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Use ``ChatContinue.continue_request()`` for full control:
+
+.. code-block:: python
+
+   chat = Chat(..., auto_history=True)
+   
+   result = chat("Story", max_tokens=50)
    if result.finish_reason == "length":
-       history = ChatHistory.from_chat_result("Long content", result)
-       continue_result = ChatContinue.continue_request(
-           chat, history, result, add_continue_prompt=True
+       # Get all intermediate results
+       all_results = ChatContinue.continue_request(
+           chat, result, auto_merge=False, max_continues=3
        )
-       full_result = ChatContinue.merge_results(result, continue_result)
-   else:
-       full_result = result
+       for i, r in enumerate(all_results):
+           print(f"Part {i+1}: {len(r.text)} chars")
 
-Pattern 2: Continue Until Complete
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Error Handling
+--------------
 
-Continue until the response is complete:
+Handling Incomplete Responses
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. code-block:: python
-
-   def get_complete_response(chat, prompt, max_tokens_per_chunk=100):
-       """Get complete response, continuing if cut off."""
-       result = chat(prompt, max_tokens=max_tokens_per_chunk)
-       history = ChatHistory.from_chat_result(prompt, result)
-       
-       results = [result]
-       
-       while results[-1].finish_reason == "length":
-           continue_result = ChatContinue.continue_request(
-               chat, history, results[-1], add_continue_prompt=True
-           )
-           results.append(continue_result)
-           history.append_result(continue_result)
-       
-       return ChatContinue.merge_results(*results)
-
-Pattern 3: Continue with Progress Tracking
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Track progress during continuation:
+When using ``chat.complete()`` with ``ensure_complete=True`` (default),
+``ChatIncompleteResponse`` is raised if the response is still truncated
+after ``max_continues``:
 
 .. code-block:: python
 
-   result1 = chat("Long story", max_tokens=100)
-   print(f"Part 1: {len(result1.text)} chars")
+   from lexilux import Chat
+   from lexilux.chat.exceptions import ChatIncompleteResponse
+
+   chat = Chat(..., auto_history=True)
    
-   if result1.finish_reason == "length":
-       history = ChatHistory.from_chat_result("Long story", result1)
-       continue_result = ChatContinue.continue_request(
-           chat, history, result1, add_continue_prompt=True
-       )
-       print(f"Part 2: {len(continue_result.text)} chars")
-       
-       full_result = ChatContinue.merge_results(result1, continue_result)
-       print(f"Complete: {len(full_result.text)} chars")
+   try:
+       result = chat.complete("Very long response", max_tokens=30, max_continues=2)
+   except ChatIncompleteResponse as e:
+       print(f"Still incomplete after {e.continue_count} continues")
+       print(f"Received: {len(e.final_result.text)} chars")
+       # Use partial result if acceptable
+       result = e.final_result
 
-Common Pitfalls
----------------
-
-Pitfall 1: Not Checking finish_reason
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-**Problem**: Continuing when it's not needed.
-
-.. code-block:: python
-
-   # Wrong - continuing even when not needed
-   result = chat("Short question")
-   continue_result = ChatContinue.continue_request(...)  # Unnecessary!
-
-   # Correct - check first
-   result = chat("Long content", max_tokens=100)
+   # Or allow partial results
+   result = chat.complete(
+       "Very long response",
+       max_tokens=30,
+       max_continues=2,
+       ensure_complete=False  # Returns partial result instead of raising
+   )
    if result.finish_reason == "length":
-       continue_result = ChatContinue.continue_request(...)
-
-**Solution**: Always check ``finish_reason == "length"`` before continuing.
-
-Pitfall 2: Not Merging Results
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-**Problem**: Using only the continue result, losing the original content.
-
-.. code-block:: python
-
-   # Wrong - only using continue result
-   result1 = chat("Story", max_tokens=100)
-   if result1.finish_reason == "length":
-       continue_result = ChatContinue.continue_request(...)
-       print(continue_result.text)  # Missing first part!
-
-   # Correct - merge results
-   result1 = chat("Story", max_tokens=100)
-   if result1.finish_reason == "length":
-       continue_result = ChatContinue.continue_request(...)
-       full_result = ChatContinue.merge_results(result1, continue_result)
-       print(full_result.text)  # Complete story
-
-**Solution**: Always use ``merge_results()`` to combine results.
-
-Pitfall 3: Incorrect History Construction
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-**Problem**: History doesn't match the conversation state.
-
-.. code-block:: python
-
-   # Wrong - history doesn't include the incomplete result
-   result1 = chat("Story", max_tokens=100)
-   history = ChatHistory.from_messages("Story")  # Missing result1!
-   continue_result = ChatContinue.continue_request(chat, history, result1)
-
-   # Correct - include result1 in history
-   result1 = chat("Story", max_tokens=100)
-   history = ChatHistory.from_chat_result("Story", result1)
-   continue_result = ChatContinue.continue_request(chat, history, result1)
-
-**Solution**: Always use ``ChatHistory.from_chat_result()`` to include the incomplete result.
-
-Pitfall 4: Multiple System Messages
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-**Problem**: If history contains multiple system messages, continuation may behave unexpectedly.
-
-.. code-block:: python
-
-   # History with multiple system messages
-   history = ChatHistory(system="System 1")
-   history.add_message("system", "System 2")  # Multiple systems
-   
-   # Continue may not work as expected
-   continue_result = ChatContinue.continue_request(chat, history, result1)
-
-**Solution**: Keep only one system message, or be aware of how multiple systems are handled.
-
-Pitfall 5: Not Handling Continue Result Finish Reason
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-**Problem**: Continue result may also be cut off.
-
-.. code-block:: python
-
-   # Wrong - assuming continue completes
-   result1 = chat("Story", max_tokens=100)
-   if result1.finish_reason == "length":
-       continue_result = ChatContinue.continue_request(...)
-       # continue_result may also have finish_reason == "length"!
-       full_result = ChatContinue.merge_results(result1, continue_result)
-
-   # Correct - check continue result too
-   result1 = chat("Story", max_tokens=100)
-   if result1.finish_reason == "length":
-       continue_result = ChatContinue.continue_request(...)
-       if continue_result.finish_reason == "length":
-           # Need another continue
-           pass
-       full_result = ChatContinue.merge_results(result1, continue_result)
-
-**Solution**: Check the continue result's finish_reason and continue again if needed.
-
-Pitfall 6: Usage Aggregation Errors
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-**Problem**: Not understanding how usage is aggregated.
-
-.. code-block:: python
-
-   result1 = ChatResult(..., usage=Usage(total_tokens=100))
-   result2 = ChatResult(..., usage=Usage(total_tokens=50))
-   
-   merged = ChatContinue.merge_results(result1, result2)
-   # merged.usage.total_tokens == 150 (sum of both)
-
-**Solution**: Understand that ``merge_results()`` sums usage statistics.
+       print("Warning: Response was truncated")
 
 Best Practices
 --------------
 
-1. **Always Check finish_reason**: Only continue when ``finish_reason == "length"``.
+1. **Use chat.complete() for Most Cases**: Simplest and most reliable
 
-2. **Always Merge Results**: Use ``merge_results()`` to combine original and continue results.
+2. **Enable auto_history**: Required for automatic history retrieval
 
-3. **Use Proper History**: Always use ``ChatHistory.from_chat_result()`` to ensure history
-   includes the incomplete result.
+3. **Set Appropriate max_continues**: Balance between completeness and API costs
 
-4. **Handle Multiple Continues**: Be prepared to continue multiple times if needed.
+4. **Handle ChatIncompleteResponse**: Be prepared for cases where response
+   is still incomplete after max_continues
 
-5. **Monitor Token Usage**: Track total tokens across all continuations:
+5. **Monitor Token Usage**: Track total tokens across all continuations
 
-   .. code-block:: python
-
-      results = [result1]
-      while results[-1].finish_reason == "length":
-          continue_result = ChatContinue.continue_request(...)
-          results.append(continue_result)
-          
-          # Check total tokens
-          merged = ChatContinue.merge_results(*results)
-          if merged.usage.total_tokens > max_total_tokens:
-              break  # Stop if too many tokens
-
-6. **Use Appropriate Continue Prompt**: Choose a prompt that fits your use case:
-
-   .. code-block:: python
-
-      # For stories
-      continue_prompt = "continue"
-      
-      # For technical content
-      continue_prompt = "Please continue the explanation"
-      
-      # For code
-      continue_prompt = "Continue the code"
-
-7. **Consider add_continue_prompt**: 
-
-   * ``True``: Adds a user message, making continuation explicit
-   * ``False``: Sends history directly, continuation is implicit
-
-   Choose based on whether you want the continuation to be part of the conversation.
+6. **Consider Increasing max_tokens**: If you frequently need multiple continues,
+   consider increasing ``max_tokens`` instead
 
 Examples
 --------
 
-Complete Workflow
-~~~~~~~~~~~~~~~~~
+Complete Workflow with complete()
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: python
 
-   from lexilux import Chat, ChatContinue, ChatHistory
+   from lexilux import Chat
+   import json
 
-   chat = Chat(...)
+   chat = Chat(..., auto_history=True)
    
-   # Initial request
-   prompt = "Write a comprehensive guide to Python"
-   result = chat(prompt, max_tokens=200)
+   # Ensure complete JSON response
+   result = chat.complete(
+       "Extract user data as JSON",
+       max_tokens=100,
+       max_continues=3
+   )
    
-   # Check if continuation needed
+   # Guaranteed complete
+   data = json.loads(result.text)
+
+Multiple Continues
+~~~~~~~~~~~~~~~~~~
+
+.. code-block:: python
+
+   chat = Chat(..., auto_history=True)
+   
+   result = chat("Very long story", max_tokens=30)
    if result.finish_reason == "length":
-       print("Response was cut off, continuing...")
-       
-       # Create history
-       history = ChatHistory.from_chat_result(prompt, result)
-       
-       # Continue
-       continue_result = ChatContinue.continue_request(
-           chat,
-           history,
-           result,
-           add_continue_prompt=True,
-           continue_prompt="Please continue",
-           max_tokens=200,  # New limit for continuation
+       # Automatically continues up to 3 times
+       full_result = ChatContinue.continue_request(
+           chat, result, max_continues=3
        )
-       
-       # Merge
-       full_result = ChatContinue.merge_results(result, continue_result)
-       
-       print(f"Complete guide ({len(full_result.text)} chars)")
-       print(f"Total tokens: {full_result.usage.total_tokens}")
-   else:
-       full_result = result
-       print("Response completed in one request")
+       print(f"Complete story: {len(full_result.text)} chars")
 
-Continue with Streaming
-~~~~~~~~~~~~~~~~~~~~~~~
-
-Continue can also work with streaming, but requires manual handling:
+Get All Intermediate Results
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: python
 
-   from lexilux import Chat, ChatContinue, ChatHistory
-
-   chat = Chat(...)
+   chat = Chat(..., auto_history=True)
    
-   # Initial streaming request
-   iterator = chat.stream("Long story", max_tokens=100)
-   chunks1 = list(iterator)
-   result1 = iterator.result.to_chat_result()
-   
-   if result1.finish_reason == "length":
-       history = ChatHistory.from_chat_result("Long story", result1)
-       
-       # Continue with non-streaming (simpler)
-       continue_result = ChatContinue.continue_request(
-           chat, history, result1, add_continue_prompt=True
+   result = chat("Story", max_tokens=50)
+   if result.finish_reason == "length":
+       all_results = ChatContinue.continue_request(
+           chat, result, auto_merge=False, max_continues=3
        )
        
-       full_result = ChatContinue.merge_results(result1, continue_result)
-
-Error Handling
-~~~~~~~~~~~~~~
-
-Handle errors during continuation:
-
-.. code-block:: python
-
-   try:
-       result1 = chat("Long content", max_tokens=100)
-       if result1.finish_reason == "length":
-           history = ChatHistory.from_chat_result("Long content", result1)
-           continue_result = ChatContinue.continue_request(
-               chat, history, result1, add_continue_prompt=True
-           )
-           full_result = ChatContinue.merge_results(result1, continue_result)
-       else:
-           full_result = result1
-   except Exception as e:
-       print(f"Error during continuation: {e}")
-       # Use partial result if available
-       if 'result1' in locals():
-           full_result = result1
+       for i, r in enumerate(all_results):
+           print(f"Part {i+1}: {len(r.text)} chars, tokens: {r.usage.total_tokens}")
 
 See Also
 --------
 
-* :doc:`chat_history` - History management for continuation
-* :doc:`auto_history` - Automatic history with continuation
-* :doc:`api_reference/chat` - API reference for ChatContinue
-
+* :doc:`auto_history` - Automatic history management
+* :doc:`chat_history` - Manual history management
+* :doc:`api_reference/chat` - Full API reference
+* :doc:`error_handling` - Error handling guide

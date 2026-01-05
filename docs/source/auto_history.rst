@@ -80,6 +80,30 @@ Auto history works seamlessly with regular chat calls:
    result3 = chat("Tell me a joke")
    # History automatically grows
 
+Error Handling
+~~~~~~~~~~~~~~
+
+When a non-streaming call fails with an exception, the behavior is:
+
+.. code-block:: python
+
+   chat = Chat(..., auto_history=True)
+
+   # First call (successful)
+   result1 = chat("Hello")
+   # History: user("Hello") + assistant(response1)
+
+   # Second call (fails with exception)
+   try:
+       result2 = chat("How are you?")
+   except Exception:
+       pass
+   
+   # History: user("Hello") + assistant(response1) + user("How are you?")
+   # Note: NO assistant response for the failed call
+   history = chat.get_history()
+   assert len([m for m in history.messages if m["role"] == "assistant"]) == 1
+
 With System Messages
 ~~~~~~~~~~~~~~~~~~~~
 
@@ -104,7 +128,12 @@ Streaming Usage
 With Streaming Calls
 ~~~~~~~~~~~~~~~~~~~~
 
-Auto history works with streaming and updates in real-time:
+Auto history works with streaming and updates in real-time. **Important behavior**:
+
+1. **User messages are added immediately** when ``chat.stream()`` is called
+2. **Assistant message is added only on first iteration** (lazy initialization)
+3. **Assistant message content is updated on each iteration** with accumulated text
+4. **If iterator is never iterated**, no assistant message is added to history
 
 .. code-block:: python
 
@@ -112,8 +141,12 @@ Auto history works with streaming and updates in real-time:
 
    # Streaming call
    iterator = chat.stream("Tell me a story")
+   # At this point: history contains user("Tell me a story"), but NO assistant message yet
+   
    for chunk in iterator:
        print(chunk.delta, end="")
+       # On first iteration: assistant message is added to history (empty initially)
+       # On each iteration: assistant message content is updated with accumulated text
        # History is being updated in real-time
 
    # After streaming completes, history contains the full conversation
@@ -129,6 +162,32 @@ Auto history works with streaming and updates in real-time:
    # History now contains both conversations
    history = chat.get_history()
    assert len(history.messages) == 4
+
+Handling Streaming Interruptions
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If streaming is interrupted, the partial content received before interruption is
+preserved in history. You can clean it up using ``clear_last_assistant_message()``:
+
+.. code-block:: python
+
+   chat = Chat(..., auto_history=True)
+
+   iterator = chat.stream("Long response")
+   try:
+       for chunk in iterator:
+           print(chunk.delta, end="")
+           # Simulate interruption
+           if some_condition:
+               raise Exception("Interrupted")
+   except Exception:
+       # Partial content is preserved in history
+       history = chat.get_history()
+       # Last assistant message contains partial content
+       
+       # Clean up if needed
+       chat.clear_last_assistant_message()
+       # Now history no longer contains the partial response
 
 Accessing Accumulated Text During Streaming
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -196,6 +255,31 @@ Clear history when starting a new conversation:
 
    # New conversation
    chat("New topic")
+
+Clearing Last Assistant Message
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Clear the last assistant message (useful for cleaning up incomplete responses):
+
+.. code-block:: python
+
+   chat = Chat(..., auto_history=True)
+
+   # After streaming interruption
+   iterator = chat.stream("Long response")
+   try:
+       for chunk in iterator:
+           print(chunk.delta)
+   except Exception:
+       # Partial response is in history
+       pass
+   
+   # Clean up partial response
+   chat.clear_last_assistant_message()
+   # History no longer contains the partial assistant message
+   
+   # This method is idempotent - safe to call multiple times
+   chat.clear_last_assistant_message()  # No error, nothing happens
 
 Using History with Other Methods
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

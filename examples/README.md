@@ -84,9 +84,8 @@ python examples/rerank_demo.py
 
 ### tokenizer_demo.py
 Examples for tokenization:
-- Online tokenization (using API)
-- Offline tokenization (using local models)
-- Auto mode (fallback to offline if API unavailable)
+- Online tokenization (allows network access for downloading models)
+- Offline tokenization (using local models only)
 
 **Run:**
 ```bash

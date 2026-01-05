@@ -8,7 +8,7 @@ both non-streaming and streaming responses.
 from __future__ import annotations
 
 import json
-from typing import Iterator, Sequence
+from typing import Any, Iterator, Sequence
 
 import requests
 
@@ -226,7 +226,20 @@ class Chat:
         if extra:
             payload.update(extra)
 
-        # Make request
+        # Auto-record history if enabled
+        # Note: User messages are added BEFORE the request to ensure they're recorded
+        # even if the request fails. Assistant response is only added on success.
+        if self.auto_history:
+            if self._history is None:
+                # Create new history from messages
+                self._history = ChatHistory.from_messages(normalized_messages)
+            else:
+                # Extract new user messages and add to history BEFORE request
+                for msg in normalized_messages:
+                    if msg.get("role") == "user":
+                        self._history.add_user(msg.get("content", ""))
+
+        # Make request (may raise exception)
         url = f"{self.base_url}/chat/completions"
         response = requests.post(
             url,
@@ -268,17 +281,8 @@ class Chat:
             raw=response_data if return_raw else {},
         )
 
-        # Auto-record history if enabled
+        # Add assistant response ONLY on success (after all exceptions are handled)
         if self.auto_history:
-            if self._history is None:
-                # Create new history from messages
-                self._history = ChatHistory.from_messages(normalized_messages)
-            else:
-                # Extract new user messages and add to history
-                for msg in normalized_messages:
-                    if msg.get("role") == "user":
-                        self._history.add_user(msg.get("content", ""))
-            # Add assistant response
             self._history.append_result(result)
 
         return result
@@ -549,6 +553,12 @@ class Chat:
         """
         Wrap streaming iterator to automatically update history.
 
+        Behavior:
+        - User messages are added to history when iterator is created
+        - Assistant message is added to history only on first iteration (lazy initialization)
+        - Assistant message content is updated on each iteration with accumulated text
+        - If iterator is never iterated, no assistant message is added
+
         Args:
             iterator: StreamingIterator to wrap.
             messages: Normalized messages for this request.
@@ -556,7 +566,7 @@ class Chat:
         Returns:
             Wrapped StreamingIterator that updates history on each chunk.
         """
-        # Create or update history
+        # Create or update history (add user messages immediately)
         if self._history is None:
             self._history = ChatHistory.from_messages(messages)
         else:
@@ -564,9 +574,6 @@ class Chat:
             new_user_msgs = [m for m in messages if m.get("role") == "user"]
             for msg in new_user_msgs:
                 self._history.add_user(msg.get("content", ""))
-
-        # Add assistant message placeholder (will be updated during streaming)
-        self._history.add_assistant("")
 
         # Wrap iterator to update history
         class HistoryUpdatingIterator(StreamingIterator):
@@ -579,10 +586,16 @@ class Chat:
                 self._history = history
                 # Use base iterator's result (which is already accumulating)
                 self._result = base_iterator.result
+                self._assistant_added = False  # Track if assistant message has been added
 
             def __iter__(self) -> Iterator[ChatStreamChunk]:
                 """Iterate chunks and update history."""
                 for chunk in self._base:
+                    # Add assistant message on first iteration (lazy initialization)
+                    if not self._assistant_added:
+                        self._history.add_assistant("")
+                        self._assistant_added = True
+
                     # Update history's last assistant message with current accumulated text
                     if (
                         self._history.messages
@@ -620,6 +633,186 @@ class Chat:
             >>> chat.clear_history()  # Reset conversation history
         """
         self._history = None
+
+    def clear_last_assistant_message(self) -> None:
+        """
+        Clear the last assistant message from history (idempotent).
+
+        This is useful for cleaning up incomplete responses, especially after
+        streaming interruptions or when you want to retry a request.
+
+        Behavior:
+        - If the last message is an assistant message, it is removed
+        - If the last message is not an assistant message, nothing happens (idempotent)
+        - If history is empty or None, nothing happens (idempotent)
+
+        Examples:
+            >>> # Clean up after streaming interruption
+            >>> iterator = chat.stream("Long response")
+            >>> try:
+            ...     for chunk in iterator:
+            ...         print(chunk.delta)
+            ... except Exception:
+            ...     # Remove partial response
+            ...     chat.clear_last_assistant_message()
+
+            >>> # Retry a request
+            >>> result = chat("Hello")
+            >>> chat.clear_last_assistant_message()  # Remove the response
+            >>> result = chat("Hello")  # Retry
+        """
+        if self._history is None:
+            return
+
+        if not self._history.messages:
+            return
+
+        # Remove last message if it's an assistant message
+        last_msg = self._history.messages[-1]
+        if last_msg.get("role") == "assistant":
+            self._history.messages.pop()
+
+    def continue_if_needed(
+        self,
+        result: ChatResult,
+        *,
+        max_continues: int = 3,
+        continue_prompt: str = "continue",
+        **params: Any,
+    ) -> ChatResult:
+        """
+        Continue generation if result is truncated (finish_reason == "length").
+
+        If result.finish_reason != "length", returns result unchanged.
+        Otherwise, automatically continues generation until complete or max_continues reached.
+
+        Args:
+            result: Previous result to check and potentially continue.
+            max_continues: Maximum number of continuation attempts.
+            continue_prompt: User prompt for continuation requests.
+            **params: Additional parameters to pass to continue requests.
+
+        Returns:
+            Complete result (merged if multiple continues were needed).
+
+        Raises:
+            ValueError: If history is not available (auto_history must be enabled).
+
+        Examples:
+            >>> result = chat("Long story", max_tokens=50)
+            >>> # Automatically continue if truncated
+            >>> full_result = chat.continue_if_needed(result)
+            >>> # If result.finish_reason != "length", returns result unchanged
+        """
+        if result.finish_reason != "length":
+            return result
+
+        from lexilux.chat.continue_ import ChatContinue
+
+        history = self.get_history() if self.auto_history else None
+        if history is None:
+            raise ValueError(
+                "Cannot continue: history not available. "
+                "Enable auto_history or provide history manually."
+            )
+
+        return ChatContinue.continue_request(
+            self,
+            result,
+            history=history,
+            max_continues=max_continues,
+            continue_prompt=continue_prompt,
+            **params,
+        )
+
+    def complete(
+        self,
+        messages: MessagesLike,
+        *,
+        max_continues: int = 3,
+        ensure_complete: bool = True,
+        continue_prompt: str = "continue",
+        **params: Any,
+    ) -> ChatResult:
+        """
+        Ensure complete response, automatically handling truncation.
+
+        This is the recommended method for scenarios requiring complete responses
+        (e.g., JSON extraction). Automatically handles truncation by continuing
+        generation until complete or max_continues reached.
+
+        Args:
+            messages: Input messages.
+            max_continues: Maximum number of continuation attempts.
+            ensure_complete: If True, raises ChatIncompleteResponseError if result is still
+                truncated after max_continues. If False, returns partial result.
+            continue_prompt: User prompt for continuation requests.
+            **params: Additional parameters to pass to chat and continue requests.
+
+        Returns:
+            Complete ChatResult (may be result of multiple continues merged).
+
+        Raises:
+            ChatIncompleteResponseError: If ensure_complete=True and result is still truncated
+                after max_continues.
+            ValueError: If auto_history is not enabled (required for automatic continuation).
+
+        Examples:
+            Ensure complete response (recommended):
+            >>> result = chat.complete("Write a long JSON", max_tokens=100)
+            >>> # Automatically handles truncation, returns complete result
+            >>> json_data = json.loads(result.text)
+
+            Allow partial result:
+            >>> result = chat.complete(
+            ...     "Long story",
+            ...     max_tokens=50,
+            ...     ensure_complete=False
+            ... )
+            >>> if result.finish_reason == "length":
+            ...     print("Warning: Response was truncated")
+        """
+        from lexilux.chat.continue_ import ChatContinue
+        from lexilux.chat.exceptions import ChatIncompleteResponseError
+
+        # Check auto_history before making the call
+        if not self.auto_history:
+            raise ValueError(
+                "auto_history must be enabled to use complete(). "
+                "Enable auto_history=True when creating Chat instance."
+            )
+
+        result = self(messages, **params)
+
+        if result.finish_reason == "length":
+            try:
+                result = ChatContinue.continue_request(
+                    self,
+                    result,
+                    max_continues=max_continues,
+                    continue_prompt=continue_prompt,
+                    **params,
+                )
+            except Exception as e:
+                if ensure_complete:
+                    raise ChatIncompleteResponseError(
+                        f"Failed to get complete response after {max_continues} continues: {e}",
+                        final_result=result,
+                        continue_count=0,
+                        max_continues=max_continues,
+                    ) from e
+                raise
+
+        if ensure_complete and result.finish_reason == "length":
+            raise ChatIncompleteResponseError(
+                f"Response still truncated after {max_continues} continues. "
+                f"Consider increasing max_continues or max_tokens.",
+                final_result=result,
+                continue_count=max_continues,
+                max_continues=max_continues,
+            )
+
+        return result
 
     def chat_with_history(
         self,

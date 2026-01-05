@@ -117,6 +117,103 @@ The following exceptions indicate network/connection problems:
 When any of these exceptions are raised, ``finish_reason`` is not available because
 the API response was not successfully received.
 
+Handling Incomplete Responses
+------------------------------
+
+When using ``chat.complete()`` or continuation functionality, you may encounter
+``ChatIncompleteResponse`` if the response is still truncated after maximum continues.
+
+.. code-block:: python
+
+   from lexilux import Chat
+   from lexilux.chat.exceptions import ChatIncompleteResponse
+
+   chat = Chat(..., auto_history=True)
+
+   try:
+       result = chat.complete("Very long response", max_tokens=30, max_continues=2)
+   except ChatIncompleteResponse as e:
+       print(f"Still incomplete after {e.continue_count} continues")
+       print(f"Received: {len(e.final_result.text)} chars")
+       # Use partial result if acceptable
+       result = e.final_result
+
+   # Or allow partial results
+   result = chat.complete(
+       "Very long response",
+       max_tokens=30,
+       max_continues=2,
+       ensure_complete=False  # Returns partial result instead of raising
+   )
+   if result.finish_reason == "length":
+       print("Warning: Response was truncated")
+
+Handling Streaming Interruptions
+---------------------------------
+
+When streaming is interrupted, partial content is preserved in history (if ``auto_history=True``).
+You can clean it up using ``clear_last_assistant_message()``:
+
+.. code-block:: python
+
+   from lexilux import Chat
+
+   chat = Chat(..., auto_history=True)
+
+   iterator = chat.stream("Long response")
+   try:
+       for chunk in iterator:
+           print(chunk.delta, end="")
+   except requests.RequestException as e:
+       print(f"\nStream interrupted: {e}")
+       
+       # Partial content is preserved in history
+       history = chat.get_history()
+       if history and history.messages:
+           last_msg = history.messages[-1]
+           if last_msg.get("role") == "assistant":
+               print(f"Partial content: {len(last_msg['content'])} chars")
+       
+       # Clean up if needed
+       chat.clear_last_assistant_message()
+
+Lexilux-Specific Exceptions
+----------------------------
+
+ChatIncompleteResponse
+~~~~~~~~~~~~~~~~~~~~~~
+
+Raised when a response is still incomplete after maximum continuation attempts.
+
+.. code-block:: python
+
+   from lexilux.chat.exceptions import ChatIncompleteResponse
+
+   try:
+       result = chat.complete("Very long response", max_tokens=30, max_continues=2)
+   except ChatIncompleteResponse as e:
+       print(f"Final result: {e.final_result.text}")
+       print(f"Continue count: {e.continue_count}")
+       print(f"Max continues: {e.max_continues}")
+
+ChatStreamInterrupted
+~~~~~~~~~~~~~~~~~~~~~
+
+Raised when a streaming request is interrupted before completion (if implemented).
+
+.. code-block:: python
+
+   from lexilux.chat.exceptions import ChatStreamInterrupted
+
+   try:
+       iterator = chat.stream("Long response")
+       for chunk in iterator:
+           print(chunk.delta, end="")
+   except ChatStreamInterrupted as e:
+       print(f"Interrupted. Received: {len(e.get_partial_text())} chars")
+       partial_result = e.get_partial_result()
+       # Can try to recover using ChatContinue or retry
+
 Best Practices
 --------------
 
@@ -131,7 +228,23 @@ Best Practices
       except requests.RequestException as e:
           print(f"Network error: {e}")
 
-2. **For streaming, track completion status**:
+2. **Use chat.complete() for guaranteed complete responses**:
+
+   .. code-block:: python
+
+      from lexilux import Chat
+      from lexilux.chat.exceptions import ChatIncompleteResponse
+
+      chat = Chat(..., auto_history=True)
+
+      try:
+          result = chat.complete("Extract JSON", max_tokens=100)
+          json_data = json.loads(result.text)  # Guaranteed complete
+      except ChatIncompleteResponse as e:
+          print(f"Still incomplete: {e.final_result.text}")
+          # Handle partial result
+
+3. **For streaming, track completion status and clean up on error**:
 
    .. code-block:: python
 
@@ -147,8 +260,34 @@ Best Practices
               print(f"\nCompleted before error: {e}")
           else:
               print(f"\nInterrupted: {e}")
+              # Clean up partial response if needed
+              if chat.auto_history:
+                  chat.clear_last_assistant_message()
 
-3. **Check finish_reason only after successful response**:
+4. **Handle auto_history behavior on errors**:
+
+   .. code-block:: python
+
+      chat = Chat(..., auto_history=True)
+
+      # Non-streaming: Exception means no assistant response in history
+      try:
+          result = chat("Hello")
+      except Exception:
+          # History contains user message but NO assistant response
+          history = chat.get_history()
+          # Only user messages, no assistant responses for failed calls
+
+      # Streaming: Partial content is preserved, clean up if needed
+      iterator = chat.stream("Long response")
+      try:
+          for chunk in iterator:
+              print(chunk.delta)
+      except Exception:
+          # Partial content is in history
+          chat.clear_last_assistant_message()  # Clean up
+
+5. **Check finish_reason only after successful response**:
 
    .. code-block:: python
 
@@ -162,4 +301,23 @@ Best Practices
       #     result = chat("Hello")
       # except Exception:
       #     print(result.finish_reason)  # ERROR: result may not exist
+
+6. **Use retry logic for network errors**:
+
+   .. code-block:: python
+
+      import time
+      from requests import RequestException
+
+      max_retries = 3
+      for attempt in range(max_retries):
+          try:
+              result = chat("Hello")
+              break  # Success
+          except RequestException as e:
+              if attempt < max_retries - 1:
+                  wait_time = 2 ** attempt  # Exponential backoff
+                  time.sleep(wait_time)
+                  continue
+              raise  # Last attempt failed
 

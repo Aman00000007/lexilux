@@ -349,55 +349,28 @@ class TestChatHistoryTokenOperations:
 
     def test_count_tokens(self):
         """Test count_tokens with real Qwen tokenizer"""
-        import signal
-        from contextlib import contextmanager
 
         try:
             from lexilux import Tokenizer
         except ImportError:
             pytest.skip("Tokenizer requires transformers library")
 
-        @contextmanager
-        def timeout_context(seconds):
-            """Context manager for timeout"""
+        # Configuration
+        model_id = "Qwen/Qwen2.5-7B-Instruct"
+        cache_dir = "/tmp/lexilux/tokenizer"
 
-            def timeout_handler(signum, frame):
-                raise TimeoutError(f"Operation timed out after {seconds} seconds")
-
-            # Set signal handler
-            old_handler = signal.signal(signal.SIGALRM, timeout_handler)
-            signal.alarm(seconds)
-            try:
-                yield
-            finally:
-                signal.alarm(0)
-                signal.signal(signal.SIGALRM, old_handler)
-
-        # Strategy: Try force_offline first (use local cache), then auto_offline, then online
-        # This avoids network timeouts if local cache exists
-        tokenizer = None
-        tokenizer_error = None
-
-        if tokenizer is None:
-            try:
-                with timeout_context(200):  # 200 second timeout (may need to download)
-                    tokenizer = Tokenizer("Qwen/Qwen2.5-7B-Instruct", mode="auto_offline")
-                    test_result = tokenizer("test")
-                    if test_result.usage.total_tokens > 0:
-                        # Success
-                        pass
-                    else:
-                        tokenizer = None
-            except (OSError, TimeoutError, Exception) as e:
-                tokenizer_error = e
-                tokenizer = None
-
-        # If all attempts failed, skip test
-        if tokenizer is None:
-            pytest.skip(
-                f"Could not load Qwen tokenizer (tried force_offline, auto_offline, online). "
-                f"Last error: {tokenizer_error}"
+        # Load tokenizer (will download if needed and offline=False)
+        try:
+            tokenizer = Tokenizer(
+                model_id,
+                cache_dir=cache_dir,
+                offline=False,  # Allow download if not cached
             )
+            test_result = tokenizer("test")
+            if test_result.usage.total_tokens == 0:
+                pytest.skip("Tokenizer loaded but produced zero tokens")
+        except Exception as e:
+            pytest.skip(f"Could not load tokenizer '{model_id}': {e}")
 
         # Now test count_tokens with the working tokenizer
         history = ChatHistory(system="You are helpful")

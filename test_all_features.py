@@ -119,12 +119,10 @@ def test_chat_continue():
         mock_response.raise_for_status = Mock()
         mock_post.return_value = mock_response
 
-        continue_result = ChatContinue.continue_request(
-            chat, history, result1, add_continue_prompt=True
+        # New API with auto_merge=True (default) returns merged result directly
+        full_result = ChatContinue.continue_request(
+            chat, result1, history=history, add_continue_prompt=True
         )
-        assert "part 2" in continue_result.text
-
-        full_result = ChatContinue.merge_results(result1, continue_result)
         assert "part 1" in full_result.text
         assert "part 2" in full_result.text
         assert full_result.usage.total_tokens == 90

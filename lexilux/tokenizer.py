@@ -6,15 +6,13 @@ Provides local tokenization with support for offline/online modes and automatic 
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Literal, Sequence
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Sequence
 
 from lexilux.usage import Json, ResultBase, Usage
 
 if TYPE_CHECKING:
     pass
-
-# Type alias
-TokenizerMode = Literal["online", "auto_offline", "force_offline"]
 
 
 class TokenizeResult(ResultBase):
@@ -64,22 +62,17 @@ class Tokenizer:
     Tokenizer client (uses transformers library).
 
     Provides local tokenization with support for:
-    - Online mode: Always allows network access for downloading models
-    - Auto-offline mode: Uses local cache if available, downloads if not
-    - Force-offline mode: Only uses local cache, fails if model not found
+    - Offline mode (offline=True): Only uses local cache, fails if model not found
+    - Online mode (offline=False): Prioritizes local cache, downloads if not found
 
     Examples:
-        >>> # Auto-offline mode (recommended)
-        >>> tokenizer = Tokenizer("Qwen/Qwen2.5-7B-Instruct", mode="auto_offline")
+        >>> # Offline mode (for air-gapped environments)
+        >>> tokenizer = Tokenizer("Qwen/Qwen2.5-7B-Instruct", offline=True, cache_dir="/models/hf")
         >>> result = tokenizer("Hello, world!")
         >>> print(result.usage.input_tokens)
 
-        >>> # Force-offline mode (for air-gapped environments)
-        >>> tokenizer = Tokenizer("Qwen/Qwen2.5-7B-Instruct", mode="force_offline", cache_dir="/models/hf")
-        >>> result = tokenizer("Hello, world!")
-
-        >>> # Online mode
-        >>> tokenizer = Tokenizer("Qwen/Qwen2.5-7B-Instruct", mode="online")
+        >>> # Online mode (default, downloads if needed)
+        >>> tokenizer = Tokenizer("Qwen/Qwen2.5-7B-Instruct", offline=False)
         >>> result = tokenizer("Hello, world!")
     """
 
@@ -88,7 +81,7 @@ class Tokenizer:
         model: str,
         *,
         cache_dir: str | None = None,
-        mode: TokenizerMode = "auto_offline",
+        offline: bool = False,
         revision: str | None = None,
         trust_remote_code: bool = False,
         require_transformers: bool = True,
@@ -99,7 +92,8 @@ class Tokenizer:
         Args:
             model: HuggingFace model identifier (e.g., "Qwen/Qwen2.5-7B-Instruct").
             cache_dir: Directory to cache models (defaults to HuggingFace cache).
-            mode: Tokenizer mode ("online", "auto_offline", "force_offline").
+            offline: If True, only use local cache (fail if not found).
+                     If False, prioritize local cache, download if not found.
             revision: Model revision/branch/tag (optional).
             trust_remote_code: Whether to allow remote code execution.
             require_transformers: If True, raise error immediately if transformers not installed.
@@ -110,7 +104,7 @@ class Tokenizer:
         """
         self.model = model
         self.cache_dir = cache_dir
-        self.mode = mode
+        self.offline = offline
         self.revision = revision
         self.trust_remote_code = trust_remote_code
         self.require_transformers = require_transformers
@@ -132,13 +126,87 @@ class Tokenizer:
                 )
             # If require_transformers=False, we'll check again on first use
 
+    def _ensure_model_downloaded(self) -> str:
+        """
+        Ensure model is downloaded to cache_dir.
+
+        This function checks if the model is already cached locally.
+        If not cached and offline=False, it downloads the model using huggingface_hub.
+        The download logic is independent of AutoTokenizer.
+
+        Returns:
+            Path to the model (can be model_id or local path)
+
+        Raises:
+            OSError: If offline=True and model not found in cache, or download failed.
+        """
+        if self.offline:
+            # Offline mode: only check cache, don't download
+            return self.model
+
+        # Online mode: check cache first, download if needed
+        try:
+            from huggingface_hub import snapshot_download
+        except ImportError:
+            # If huggingface_hub is not available, fall back to AutoTokenizer download
+            return self.model
+
+        cache_path = Path(self.cache_dir) if self.cache_dir else None
+        if cache_path is None:
+            # No cache_dir specified, let AutoTokenizer handle it
+            return self.model
+
+        cache_path.mkdir(parents=True, exist_ok=True)
+
+        # Check if model is already cached (HuggingFace Hub cache structure)
+        model_cache_name = self.model.replace("/", "--")
+        model_cache_path = cache_path / f"models--{model_cache_name}"
+
+        # Check for existing snapshots
+        cached_snapshot_path = None
+        if model_cache_path.exists():
+            snapshots_dir = model_cache_path / "snapshots"
+            if snapshots_dir.exists():
+                # Find the first valid snapshot directory
+                snapshots = sorted(snapshots_dir.iterdir())
+                for snapshot in snapshots:
+                    if snapshot.is_dir():
+                        # Verify it's a valid snapshot (has tokenizer files)
+                        tokenizer_files = list(snapshot.glob("tokenizer*.json"))
+                        if tokenizer_files:
+                            cached_snapshot_path = snapshot
+                            break
+
+        # Return cached path if found
+        if cached_snapshot_path:
+            return str(cached_snapshot_path)
+
+        # Download model if not cached
+        try:
+            downloaded_path = snapshot_download(
+                repo_id=self.model,
+                cache_dir=str(cache_path),
+                revision=self.revision,
+                local_files_only=False,  # Allow network access for downloading
+            )
+            # snapshot_download returns the snapshot directory path
+            return downloaded_path
+        except Exception as e:
+            # If download failed, raise error
+            raise OSError(
+                f"Failed to download model '{self.model}': {e}. Cache dir: {self.cache_dir}"
+            ) from e
+
     def _ensure_tokenizer(self):
         """
         Ensure tokenizer is loaded (lazy loading).
 
+        Uses local_files_only parameter instead of environment variables for better control.
+        This is the recommended approach as it doesn't affect global state.
+
         Raises:
             ImportError: If transformers is not available.
-            OSError: If model cannot be loaded (e.g., force_offline mode and model not found).
+            OSError: If model cannot be loaded (e.g., offline mode and model not found).
         """
         if self._tokenizer is not None:
             return
@@ -158,53 +226,39 @@ class Tokenizer:
         # Import transformers components
         from transformers import AutoTokenizer
 
-        # Determine local_files_only based on mode
-        if self.mode == "force_offline":
-            local_files_only = True
-        elif self.mode == "auto_offline":
-            # Try local first, fallback to online
-            local_files_only = None  # Will try local first
-        else:  # online
-            local_files_only = False
+        # Ensure model is downloaded (if needed)
+        model_path = self._ensure_model_downloaded()
 
         # Load tokenizer
-        try:
-            if self.mode == "auto_offline":
-                # Try local first
-                try:
-                    self._tokenizer = AutoTokenizer.from_pretrained(
-                        self.model,
-                        cache_dir=self.cache_dir,
-                        revision=self.revision,
-                        trust_remote_code=self.trust_remote_code,
-                        local_files_only=True,
-                    )
-                except (OSError, ValueError):
-                    # Local not available, try online
-                    self._tokenizer = AutoTokenizer.from_pretrained(
-                        self.model,
-                        cache_dir=self.cache_dir,
-                        revision=self.revision,
-                        trust_remote_code=self.trust_remote_code,
-                        local_files_only=False,
-                    )
-            else:
-                # force_offline or online
+        # If model_path is a local path (from snapshot_download), use it directly
+        # Otherwise, it's the model_id and AutoTokenizer will handle it
+        if self.offline:
+            # Offline: only use local cache
+            try:
                 self._tokenizer = AutoTokenizer.from_pretrained(
-                    self.model,
+                    model_path,
                     cache_dir=self.cache_dir,
                     revision=self.revision,
                     trust_remote_code=self.trust_remote_code,
-                    local_files_only=local_files_only,
+                    local_files_only=True,
                 )
-        except Exception as e:
-            if self.mode == "force_offline":
+            except (OSError, ValueError) as e:
                 raise OSError(
                     f"Model '{self.model}' not found in local cache. "
-                    f"Force-offline mode requires the model to be pre-downloaded. "
+                    f"Offline mode requires the model to be pre-downloaded. "
                     f"Cache dir: {self.cache_dir or 'default HuggingFace cache'}"
                 ) from e
-            raise
+        else:
+            # Online: allow network access
+            # If model_path is a local snapshot path, it's already downloaded
+            # If it's model_id, AutoTokenizer will download if needed
+            self._tokenizer = AutoTokenizer.from_pretrained(
+                model_path,
+                cache_dir=self.cache_dir,
+                revision=self.revision,
+                trust_remote_code=self.trust_remote_code,
+                local_files_only=False,
+            )
 
     def __call__(
         self,
@@ -236,7 +290,7 @@ class Tokenizer:
 
         Raises:
             ImportError: If transformers is not available.
-            OSError: If model cannot be loaded (force_offline mode).
+            OSError: If model cannot be loaded (offline mode).
         """
         # Ensure tokenizer is loaded
         self._ensure_tokenizer()

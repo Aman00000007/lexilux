@@ -6,6 +6,7 @@ Provides Chat client, result models, and parameter configuration for chat comple
 
 from lexilux.chat.client import Chat
 from lexilux.chat.continue_ import ChatContinue
+from lexilux.chat.exceptions import ChatIncompleteResponseError, ChatStreamInterruptedError
 from lexilux.chat.formatters import ChatHistoryFormatter
 from lexilux.chat.history import (
     ChatHistory,
@@ -33,6 +34,9 @@ __all__ = [
     "Role",
     "MessageLike",
     "MessagesLike",
+    # Exceptions
+    "ChatStreamInterruptedError",
+    "ChatIncompleteResponseError",
     # Utility functions
     "merge_histories",
     "filter_by_role",

@@ -21,7 +21,7 @@ class TestTokenizerInit:
         tokenizer = Tokenizer(
             "Qwen/Qwen2.5-7B-Instruct",
             cache_dir="/custom/cache",
-            mode="force_offline",
+            offline=True,
             revision="main",
             trust_remote_code=True,
             require_transformers=True,
@@ -29,7 +29,7 @@ class TestTokenizerInit:
 
         assert tokenizer.model == "Qwen/Qwen2.5-7B-Instruct"
         assert tokenizer.cache_dir == "/custom/cache"
-        assert tokenizer.mode == "force_offline"
+        assert tokenizer.offline is True
         assert tokenizer.revision == "main"
         assert tokenizer.trust_remote_code is True
 
@@ -53,12 +53,14 @@ class TestTokenizerModes:
     """Tokenizer mode tests"""
 
     @patch("transformers.AutoTokenizer")
-    def test_force_offline_mode(self, mock_auto_tokenizer):
-        """Test force_offline mode"""
+    @patch("lexilux.tokenizer.Tokenizer._ensure_model_downloaded")
+    def test_offline_mode(self, mock_ensure_download, mock_auto_tokenizer):
+        """Test offline mode"""
         mock_tokenizer = MagicMock()
         mock_auto_tokenizer.from_pretrained.return_value = mock_tokenizer
+        mock_ensure_download.return_value = "test-model"
 
-        tokenizer = Tokenizer("test-model", mode="force_offline")
+        tokenizer = Tokenizer("test-model", offline=True)
         tokenizer._ensure_tokenizer()
 
         # Should call with local_files_only=True
@@ -67,12 +69,14 @@ class TestTokenizerModes:
         assert call_kwargs["local_files_only"] is True
 
     @patch("transformers.AutoTokenizer")
-    def test_online_mode(self, mock_auto_tokenizer):
+    @patch("lexilux.tokenizer.Tokenizer._ensure_model_downloaded")
+    def test_online_mode(self, mock_ensure_download, mock_auto_tokenizer):
         """Test online mode"""
         mock_tokenizer = MagicMock()
         mock_auto_tokenizer.from_pretrained.return_value = mock_tokenizer
+        mock_ensure_download.return_value = "test-model"
 
-        tokenizer = Tokenizer("test-model", mode="online")
+        tokenizer = Tokenizer("test-model", offline=False)
         tokenizer._ensure_tokenizer()
 
         # Should call with local_files_only=False
@@ -81,45 +85,13 @@ class TestTokenizerModes:
         assert call_kwargs["local_files_only"] is False
 
     @patch("transformers.AutoTokenizer")
-    def test_auto_offline_mode_local_available(self, mock_auto_tokenizer):
-        """Test auto_offline mode when local model is available"""
-        mock_tokenizer = MagicMock()
-        mock_auto_tokenizer.from_pretrained.return_value = mock_tokenizer
-
-        tokenizer = Tokenizer("test-model", mode="auto_offline")
-        tokenizer._ensure_tokenizer()
-
-        # Should try local first (local_files_only=True)
-        calls = mock_auto_tokenizer.from_pretrained.call_args_list
-        assert len(calls) == 1  # Local succeeded, no fallback
-        assert calls[0][1]["local_files_only"] is True
-
-    @patch("transformers.AutoTokenizer")
-    def test_auto_offline_mode_local_unavailable(self, mock_auto_tokenizer):
-        """Test auto_offline mode when local model is not available"""
-        mock_tokenizer = MagicMock()
-
-        # First call (local) raises OSError, second call (online) succeeds
-        mock_auto_tokenizer.from_pretrained.side_effect = [
-            OSError("Model not found locally"),
-            mock_tokenizer,
-        ]
-
-        tokenizer = Tokenizer("test-model", mode="auto_offline")
-        tokenizer._ensure_tokenizer()
-
-        # Should try local first, then fallback to online
-        calls = mock_auto_tokenizer.from_pretrained.call_args_list
-        assert len(calls) == 2
-        assert calls[0][1]["local_files_only"] is True
-        assert calls[1][1]["local_files_only"] is False
-
-    @patch("transformers.AutoTokenizer")
-    def test_force_offline_mode_failure(self, mock_auto_tokenizer):
-        """Test force_offline mode when model is not found"""
+    @patch("lexilux.tokenizer.Tokenizer._ensure_model_downloaded")
+    def test_offline_mode_failure(self, mock_ensure_download, mock_auto_tokenizer):
+        """Test offline mode when model is not found"""
+        mock_ensure_download.return_value = "test-model"
         mock_auto_tokenizer.from_pretrained.side_effect = OSError("Model not found")
 
-        tokenizer = Tokenizer("test-model", mode="force_offline")
+        tokenizer = Tokenizer("test-model", offline=True)
 
         with pytest.raises(OSError, match="not found in local cache"):
             tokenizer._ensure_tokenizer()

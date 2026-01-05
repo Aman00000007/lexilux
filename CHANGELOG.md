@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.1] - 2026-01-06
+
+### Changed
+- **BREAKING**: Simplified `Tokenizer` mode parameter from `mode="online"/"offline"/"auto_offline"` to `offline=True/False`
+  - Removed `auto_offline` mode (which tried local cache first, then downloaded if not found)
+  - Now uses `offline=True` for offline-only mode (fails if model not cached)
+  - Now uses `offline=False` (default) for online mode (prioritizes local cache, downloads if needed)
+  - Model download logic moved to business code, independent of `AutoTokenizer`
+- Renamed exception classes to follow Python naming conventions:
+  - `ChatStreamInterrupted` → `ChatStreamInterruptedError`
+  - `ChatIncompleteResponse` → `ChatIncompleteResponseError`
+
+### Added
+- Added `huggingface-hub>=0.16.0` to `tokenizer` optional dependencies for explicit model downloading support
+- `Tokenizer` now automatically downloads models when `offline=False` and model is not cached locally
+
+### Fixed
+- Fixed ruff linting configuration warnings by moving `select` and `ignore` to `[tool.ruff.lint]` section
+
 ## [0.5.0] - 2026-01-05
 
 ### Added

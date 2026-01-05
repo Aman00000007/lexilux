@@ -7,7 +7,7 @@ is stopped due to max_tokens limit.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal, overload
 
 from lexilux.chat.history import ChatHistory
 from lexilux.chat.models import ChatResult
@@ -26,54 +26,147 @@ class ChatContinue:
     """
 
     @staticmethod
+    @overload
     def continue_request(
         chat: Chat,
-        history: ChatHistory,
         last_result: ChatResult,
         *,
+        history: ChatHistory | None = None,
         add_continue_prompt: bool = True,
         continue_prompt: str = "continue",
+        max_continues: int = 1,
+        auto_merge: Literal[True] = True,
         **params: Any,
-    ) -> ChatResult:
+    ) -> ChatResult: ...
+
+    @staticmethod
+    @overload
+    def continue_request(
+        chat: Chat,
+        last_result: ChatResult,
+        *,
+        history: ChatHistory | None = None,
+        add_continue_prompt: bool = True,
+        continue_prompt: str = "continue",
+        max_continues: int = 1,
+        auto_merge: Literal[False],
+        **params: Any,
+    ) -> list[ChatResult]: ...
+
+    @staticmethod
+    def continue_request(
+        chat: Chat,
+        last_result: ChatResult,
+        *,
+        history: ChatHistory | None = None,
+        add_continue_prompt: bool = True,
+        continue_prompt: str = "continue",
+        max_continues: int = 1,
+        auto_merge: bool = True,
+        **params: Any,
+    ) -> ChatResult | list[ChatResult]:
         """
-        Make a continue request to extend generation.
+        Continue generation request (enhanced version).
+
+        Automatically handles continuation when finish_reason == "length", with support
+        for automatic history retrieval, multiple continues, and automatic merging.
 
         Args:
             chat: Chat client instance.
-            history: Conversation history (contains incomplete assistant message).
-            last_result: Last result (finish_reason == "length").
+            last_result: Last result (must have finish_reason == "length").
+            history: Conversation history (optional). If None and chat.auto_history=True,
+                automatically retrieved from chat.get_history().
             add_continue_prompt: Whether to add a user continue instruction round.
-                - True: Add a user message (e.g., "continue"), then continue generation.
-                - False: Send original history directly, last round is incomplete assistant.
             continue_prompt: User prompt when add_continue_prompt=True.
+            max_continues: Maximum number of continuation attempts. If result is still
+                truncated after max_continues, returns merged result (if auto_merge=True)
+                or list of results (if auto_merge=False).
+            auto_merge: If True, automatically merge all results into a single ChatResult.
+                If False, returns a list of all results [last_result, continue_result1, ...].
             **params: Additional parameters to pass to chat (temperature, max_tokens, etc.).
 
         Returns:
-            New result (needs to be merged with last_result using merge_results).
+            If auto_merge=True: Merged ChatResult with all continuation results combined.
+            If auto_merge=False: List of ChatResult instances [last_result, continue_result1, ...].
 
-        Note:
-            - User must check finish_reason == "length" before calling this.
-            - User must merge results using merge_results().
+        Raises:
+            ValueError: If last_result.finish_reason != "length" or history is required but not available.
 
         Examples:
+            Basic usage (automatic history retrieval):
             >>> result = chat("Write a long story", max_tokens=50)
-            >>> history = ChatHistory.from_chat_result("Write a long story", result)
             >>> if result.finish_reason == "length":
-            ...     continue_result = ChatContinue.continue_request(
-            ...         chat, history, result,
-            ...         add_continue_prompt=True,
-            ...         continue_prompt="continue"
-            ...     )
-            ...     full_result = ChatContinue.merge_results(result, continue_result)
+            ...     full_result = ChatContinue.continue_request(chat, result)
+            ...     print(full_result.text)  # Complete merged text
+
+            Multiple continues:
+            >>> result = chat("Very long story", max_tokens=30)
+            >>> if result.finish_reason == "length":
+            ...     full_result = ChatContinue.continue_request(chat, result, max_continues=3)
+
+            Get all intermediate results:
+            >>> result = chat("Story", max_tokens=50)
+            >>> if result.finish_reason == "length":
+            ...     all_results = ChatContinue.continue_request(chat, result, auto_merge=False)
+            ...     # all_results = [result, continue_result1, continue_result2, ...]
         """
-        if add_continue_prompt:
-            # Add user continue message
-            history.add_user(continue_prompt)
-            # Make request with updated history
-            return chat(history.get_messages(), **params)
+
+        if last_result.finish_reason != "length":
+            raise ValueError(
+                f"continue_request requires finish_reason='length', "
+                f"got '{last_result.finish_reason}'"
+            )
+
+        # Auto-retrieve history if not provided
+        if history is None:
+            if chat.auto_history:
+                history = chat.get_history()
+                if history is None:
+                    raise ValueError(
+                        "History not available. Either provide history manually "
+                        "or ensure auto_history is enabled and chat was called."
+                    )
+            else:
+                raise ValueError(
+                    "History is required when auto_history=False. "
+                    "Provide history manually or enable auto_history."
+                )
+
+        all_results = [last_result]
+        current_result = last_result
+        continue_count = 0
+
+        while current_result.finish_reason == "length" and continue_count < max_continues:
+            continue_count += 1
+
+            # Execute single continue request
+            if add_continue_prompt:
+                history.add_user(continue_prompt)
+
+            continue_result = chat(history.get_messages(), **params)
+            all_results.append(continue_result)
+            current_result = continue_result
+
+            # Update history (if not using auto_history, manually update)
+            if not chat.auto_history:
+                history.append_result(continue_result)
+
+        # Check if still truncated after max_continues
+        if current_result.finish_reason == "length":
+            if auto_merge:
+                # Return merged result even if truncated
+                return ChatContinue.merge_results(*all_results)
+            else:
+                # Return all results, let user decide
+                return all_results
+
+        # Merge results if auto_merge
+        if auto_merge:
+            if len(all_results) == 1:
+                return all_results[0]
+            return ChatContinue.merge_results(*all_results)
         else:
-            # Send original history directly (last assistant message is incomplete)
-            return chat(history.get_messages(), **params)
+            return all_results
 
     @staticmethod
     def merge_results(*results: ChatResult) -> ChatResult:

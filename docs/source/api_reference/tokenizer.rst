@@ -12,8 +12,8 @@ The Tokenizer module provides local tokenization functionality using the Hugging
 Features
 --------
 
-* **Multiple modes**: Online, auto-offline, and force-offline modes
-* **Automatic model downloading**: Downloads models automatically (in online/auto-offline modes)
+* **Offline/Online modes**: Control network access with ``offline`` parameter
+* **Automatic model downloading**: Downloads models automatically when ``offline=False`` (default)
 * **Local caching**: Uses HuggingFace cache for offline access
 * **Flexible input**: Supports single text or batch tokenization
 * **Usage tracking**: Provides token count statistics

@@ -148,15 +148,15 @@ ranked = result.results  # List[Tuple[int, float, str]] - (index, score, doc)
 ```python
 from lexilux import Tokenizer
 
-# Auto-offline mode (use local cache if available, download if not)
-tokenizer = Tokenizer("Qwen/Qwen2.5-7B-Instruct", mode="auto_offline")
+# Offline mode (use local cache only, fail if not found)
+tokenizer = Tokenizer("Qwen/Qwen2.5-7B-Instruct", offline=True)
 
 result = tokenizer("Hello, world!")
 print(result.usage.input_tokens)  # 3
 print(result.input_ids)  # [[15496, 11, 1917, 0]]
 
-# Force-offline mode (for air-gapped environments)
-tokenizer = Tokenizer("Qwen/Qwen2.5-7B-Instruct", mode="force_offline", cache_dir="/models/hf")
+# Online mode (default, downloads if not cached)
+tokenizer = Tokenizer("Qwen/Qwen2.5-7B-Instruct", offline=False)
 ```
 
 ## 📚 Documentation

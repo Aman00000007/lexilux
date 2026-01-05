@@ -925,6 +925,7 @@ docs = [
     { name = "sphinx-rtd-theme" },
 ]
 tokenizer = [
+    { name = "huggingface-hub" },
     { name = "tokenizers", version = "0.20.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.9'" },
     { name = "tokenizers", version = "0.22.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.9'" },
     { name = "transformers", version = "4.46.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.9'" },
@@ -967,6 +968,7 @@ docs = [
 [package.metadata]
 requires-dist = [
     { name = "furo", marker = "extra == 'docs'", specifier = ">=2024.1.0" },
+    { name = "huggingface-hub", marker = "extra == 'tokenizer'", specifier = ">=0.16.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=0.991" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0.0" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.0.0" },

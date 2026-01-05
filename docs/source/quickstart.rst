@@ -182,21 +182,43 @@ serialization, and formatting capabilities.
 
 **Continue Generation** (when response is cut off):
 
+Recommended approach - use ``chat.complete()``:
+
 .. code-block:: python
 
-   from lexilux import ChatContinue, ChatHistory
+   from lexilux import Chat
+   import json
 
-   result = chat("Write a long story", max_tokens=100)
+   chat = Chat(..., auto_history=True)
+
+   # Automatically handles truncation, returns complete result
+   result = chat.complete("Write a long JSON response", max_tokens=100)
+   json_data = json.loads(result.text)  # Guaranteed complete
+
+Conditional continue:
+
+.. code-block:: python
+
+   chat = Chat(..., auto_history=True)
+
+   result = chat("Long story", max_tokens=50)
+   # Only continues if truncated
+   full_result = chat.continue_if_needed(result, max_continues=3)
+
+Advanced control:
+
+.. code-block:: python
+
+   from lexilux import ChatContinue
+
+   chat = Chat(..., auto_history=True)
+   result = chat("Story", max_tokens=50)
    
    if result.finish_reason == "length":
-       # Response was cut off, continue it
-       history = ChatHistory.from_chat_result("Write a long story", result)
-       continue_result = ChatContinue.continue_request(
-           chat, history, result, add_continue_prompt=True
+       # Automatic history retrieval, multiple continues, auto merge
+       full_result = ChatContinue.continue_request(
+           chat, result, max_continues=3
        )
-       # Merge results
-       full_result = ChatContinue.merge_results(result, continue_result)
-       print(full_result.text)  # Complete story
 
 .. note::
    For detailed guide on continue functionality, see :doc:`chat_continue`.
@@ -292,8 +314,8 @@ Tokenizer
 
    from lexilux import Tokenizer
 
-   # Auto-offline mode (recommended)
-   tokenizer = Tokenizer("Qwen/Qwen2.5-7B-Instruct", mode="auto_offline")
+   # Offline mode (use local cache only, fail if not found)
+   tokenizer = Tokenizer("Qwen/Qwen2.5-7B-Instruct", offline=True)
 
    result = tokenizer("Hello, world!")
    print(result.usage.input_tokens)

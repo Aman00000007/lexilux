@@ -23,7 +23,7 @@ from lexilux.chat import (
 from lexilux.embed import Embed, EmbedResult
 from lexilux.embed_params import EmbedParams
 from lexilux.rerank import Rerank, RerankResult
-from lexilux.tokenizer import Tokenizer, TokenizeResult, TokenizerMode
+from lexilux.tokenizer import Tokenizer, TokenizeResult
 from lexilux.usage import ResultBase, Usage
 
 __all__ = [
@@ -56,7 +56,6 @@ __all__ = [
     # Tokenizer
     "Tokenizer",
     "TokenizeResult",
-    "TokenizerMode",
 ]
 
-__version__ = "0.5.0"
+__version__ = "0.5.1"

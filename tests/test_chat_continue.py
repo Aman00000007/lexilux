@@ -44,10 +44,12 @@ class TestChatContinueContinueRequest:
         mock_post.return_value = mock_response
 
         continue_result = ChatContinue.continue_request(
-            chat, history, result1, add_continue_prompt=True, continue_prompt="continue"
+            chat, result1, history=history, add_continue_prompt=True, continue_prompt="continue"
         )
 
-        assert continue_result.text == " and part 2"
+        # New API with auto_merge=True (default) returns merged result
+        assert continue_result.text == "This is part 1 and part 2"
+        assert " and part 2" in continue_result.text
         # Verify that history was updated with continue prompt
         # The history should have the continue prompt as a user message
         assert len(history.messages) >= 2  # Original + continue prompt
@@ -80,10 +82,12 @@ class TestChatContinueContinueRequest:
         mock_post.return_value = mock_response
 
         continue_result = ChatContinue.continue_request(
-            chat, history, result1, add_continue_prompt=False
+            chat, result1, history=history, add_continue_prompt=False
         )
 
-        assert continue_result.text == " and part 2"
+        # New API with auto_merge=True (default) returns merged result
+        assert continue_result.text == "This is part 1 and part 2"
+        assert " and part 2" in continue_result.text
         # History should not have additional user message when add_continue_prompt=False
         # Note: This tests the interface contract
 
@@ -116,13 +120,15 @@ class TestChatContinueContinueRequest:
 
         continue_result = ChatContinue.continue_request(
             chat,
-            history,
             result1,
+            history=history,
             add_continue_prompt=True,
             continue_prompt="Please continue",
         )
 
-        assert continue_result.text == " continuation"
+        # New API with auto_merge=True (default) returns merged result
+        assert continue_result.text == "This is part 1 continuation"
+        assert " continuation" in continue_result.text
         # Verify custom prompt was used
         # The last user message before assistant should be the custom prompt
         user_messages = [msg for msg in history.messages if msg.get("role") == "user"]
@@ -266,12 +272,10 @@ class TestChatContinueIntegration:
         mock_response.raise_for_status = Mock()
         mock_post.return_value = mock_response
 
-        continue_result = ChatContinue.continue_request(
-            chat, history, result1, add_continue_prompt=True
+        # New API with auto_merge=True (default) returns merged result directly
+        full_result = ChatContinue.continue_request(
+            chat, result1, history=history, add_continue_prompt=True
         )
-
-        # Merge results
-        full_result = ChatContinue.merge_results(result1, continue_result)
 
         assert "This is a long story that was cut off" in full_result.text
         assert " and here is the continuation" in full_result.text

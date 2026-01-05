@@ -10,10 +10,10 @@ from lexilux import Tokenizer
 
 def main():
     """Main function"""
-    # Initialize tokenizer (auto-offline mode)
+    # Initialize tokenizer (offline mode)
     tokenizer = Tokenizer(
         "Qwen/Qwen2.5-7B-Instruct",
-        mode="auto_offline",
+        offline=True,
     )
 
     # Single text
