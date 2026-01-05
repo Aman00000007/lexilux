@@ -12,8 +12,10 @@ from typing import Iterator, Sequence
 
 import requests
 
+from lexilux.chat.history import ChatHistory
 from lexilux.chat.models import ChatResult, ChatStreamChunk, MessagesLike
 from lexilux.chat.params import ChatParams
+from lexilux.chat.streaming import StreamingIterator, StreamingResult
 from lexilux.chat.utils import normalize_finish_reason, normalize_messages, parse_usage
 from lexilux.usage import Json, Usage
 
@@ -47,6 +49,7 @@ class Chat:
         timeout_s: float = 60.0,
         headers: dict[str, str] | None = None,
         proxies: dict[str, str] | None = None,
+        auto_history: bool = False,
     ):
         """
         Initialize Chat client.
@@ -60,6 +63,9 @@ class Chat:
             proxies: Optional proxy configuration dict (e.g., {"http": "http://proxy:port"}).
                     If None, uses environment variables (HTTP_PROXY, HTTPS_PROXY).
                     To disable proxies, pass {}.
+            auto_history: Whether to automatically record conversation history.
+                    If True, history is automatically maintained and can be accessed via get_history().
+                    Default: False
         """
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
@@ -67,6 +73,8 @@ class Chat:
         self.timeout_s = timeout_s
         self.headers = headers or {}
         self.proxies = proxies  # None means use environment variables
+        self.auto_history = auto_history
+        self._history: ChatHistory | None = None  # Auto-recorded history
 
         # Set default headers
         if self.api_key:
@@ -252,13 +260,28 @@ class Chat:
         # Parse usage
         usage = parse_usage(response_data)
 
-        # Return result
-        return ChatResult(
+        # Create result
+        result = ChatResult(
             text=text,
             usage=usage,
             finish_reason=finish_reason,
             raw=response_data if return_raw else {},
         )
+
+        # Auto-record history if enabled
+        if self.auto_history:
+            if self._history is None:
+                # Create new history from messages
+                self._history = ChatHistory.from_messages(normalized_messages)
+            else:
+                # Extract new user messages and add to history
+                for msg in normalized_messages:
+                    if msg.get("role") == "user":
+                        self._history.add_user(msg.get("content", ""))
+            # Add assistant response
+            self._history.append_result(result)
+
+        return result
 
     def stream(
         self,
@@ -278,7 +301,8 @@ class Chat:
         extra: Json | None = None,
         include_usage: bool = True,
         return_raw_events: bool = False,
-    ) -> Iterator[ChatStreamChunk]:
+        auto_history: bool | None = None,
+    ) -> StreamingIterator:
         """
         Make a streaming chat completion request.
 
@@ -308,9 +332,12 @@ class Chat:
                 Merged with params if both are provided.
             include_usage: Whether to request usage in the final chunk (OpenAI-style).
             return_raw_events: Whether to include raw event data in chunks.
+            auto_history: Override instance auto_history setting (optional).
+                    If None, uses instance setting.
 
-        Yields:
-            ChatStreamChunk objects with delta text and usage.
+        Returns:
+            StreamingIterator: Iterator that yields ChatStreamChunk objects.
+                    Access accumulated result via iterator.result.
 
         Raises:
             requests.RequestException: On network or HTTP errors (connection timeout,
@@ -331,6 +358,12 @@ class Chat:
             >>> params = ChatParams(temperature=0.5, max_tokens=100)
             >>> for chunk in chat.stream("Hello", params=params):
             ...     print(chunk.delta, end="")
+
+            With auto_history:
+            >>> iterator = chat.stream("Hello", auto_history=True)
+            >>> for chunk in iterator:
+            ...     print(chunk.delta, end="")
+            >>> history = chat.get_history()  # Contains complete conversation
         """
         # Normalize messages
         normalized_messages = normalize_messages(messages, system=system)
@@ -417,78 +450,215 @@ class Chat:
         )
         response.raise_for_status()
 
-        # Parse SSE stream
-        accumulated_text = ""
-        final_usage: Usage | None = None
+        # Create internal chunk generator
+        def _chunk_generator() -> Iterator[ChatStreamChunk]:
+            """Internal generator for streaming chunks."""
+            accumulated_text = ""
+            final_usage: Usage | None = None
 
-        for line in response.iter_lines():
-            if not line:
-                continue
+            for line in response.iter_lines():
+                if not line:
+                    continue
 
-            line_str = line.decode("utf-8")
-            if not line_str.startswith("data: "):
-                continue
+                line_str = line.decode("utf-8")
+                if not line_str.startswith("data: "):
+                    continue
 
-            data_str = line_str[6:]  # Remove "data: " prefix
-            if data_str == "[DONE]":
-                # Final chunk with usage (if include_usage=True)
-                if final_usage is None:
-                    # No usage received, create empty usage
-                    final_usage = Usage()
+                data_str = line_str[6:]  # Remove "data: " prefix
+                if data_str == "[DONE]":
+                    # Final chunk with usage (if include_usage=True)
+                    if final_usage is None:
+                        # No usage received, create empty usage
+                        final_usage = Usage()
+                    yield ChatStreamChunk(
+                        delta="",
+                        done=True,
+                        usage=final_usage,
+                        finish_reason=None,  # [DONE] doesn't provide finish_reason
+                        raw={"done": True} if return_raw_events else {},
+                    )
+                    break
+
+                try:
+                    event_data = json.loads(data_str)
+                except json.JSONDecodeError:
+                    continue
+
+                # Parse event
+                choices = event_data.get("choices", [])
+                if not choices:
+                    continue
+
+                choice = choices[0]
+                if not isinstance(choice, dict):
+                    # Skip invalid choice format
+                    continue
+
+                delta = choice.get("delta") or {}
+                if not isinstance(delta, dict):
+                    delta = {}
+                content = delta.get("content") or ""
+
+                # Normalize finish_reason (defensive against invalid implementations)
+                finish_reason = normalize_finish_reason(choice.get("finish_reason"))
+                # done is True when finish_reason is a non-empty string
+                done = finish_reason is not None
+
+                # Accumulate text
+                accumulated_text += content
+
+                # Parse usage if present (usually only in final chunk when include_usage=True)
+                usage = None
+                if "usage" in event_data:
+                    usage = parse_usage(event_data)
+                    final_usage = usage
+                elif done and final_usage is None:
+                    # Final chunk but no usage yet - create empty usage
+                    usage = Usage()
+                    final_usage = usage
+                else:
+                    # Intermediate chunk - empty usage
+                    usage = Usage()
+
                 yield ChatStreamChunk(
-                    delta="",
-                    done=True,
-                    usage=final_usage,
-                    finish_reason=None,  # [DONE] doesn't provide finish_reason
-                    raw={"done": True} if return_raw_events else {},
+                    delta=content,
+                    done=done,
+                    usage=usage,
+                    finish_reason=finish_reason,
+                    raw=event_data if return_raw_events else {},
                 )
-                break
 
-            try:
-                event_data = json.loads(data_str)
-            except json.JSONDecodeError:
-                continue
+        # Create StreamingIterator
+        chunk_iterator = _chunk_generator()
+        streaming_iterator = StreamingIterator(chunk_iterator)
 
-            # Parse event
-            choices = event_data.get("choices", [])
-            if not choices:
-                continue
+        # If auto_history, wrap iterator to update history
+        use_auto_history = auto_history if auto_history is not None else self.auto_history
+        if use_auto_history:
+            streaming_iterator = self._wrap_streaming_with_history(streaming_iterator, normalized_messages)
 
-            choice = choices[0]
-            if not isinstance(choice, dict):
-                # Skip invalid choice format
-                continue
+        return streaming_iterator
 
-            delta = choice.get("delta") or {}
-            if not isinstance(delta, dict):
-                delta = {}
-            content = delta.get("content") or ""
+    def _wrap_streaming_with_history(
+        self,
+        iterator: StreamingIterator,
+        messages: list[dict[str, str]],
+    ) -> StreamingIterator:
+        """
+        Wrap streaming iterator to automatically update history.
 
-            # Normalize finish_reason (defensive against invalid implementations)
-            finish_reason = normalize_finish_reason(choice.get("finish_reason"))
-            # done is True when finish_reason is a non-empty string
-            done = finish_reason is not None
+        Args:
+            iterator: StreamingIterator to wrap.
+            messages: Normalized messages for this request.
 
-            # Accumulate text
-            accumulated_text += content
+        Returns:
+            Wrapped StreamingIterator that updates history on each chunk.
+        """
+        # Create or update history
+        if self._history is None:
+            self._history = ChatHistory.from_messages(messages)
+        else:
+            # Extract new user messages
+            new_user_msgs = [m for m in messages if m.get("role") == "user"]
+            for msg in new_user_msgs:
+                self._history.add_user(msg.get("content", ""))
 
-            # Parse usage if present (usually only in final chunk when include_usage=True)
-            usage = None
-            if "usage" in event_data:
-                usage = parse_usage(event_data)
-                final_usage = usage
-            elif done and final_usage is None:
-                # Final chunk but no usage yet - create empty usage
-                usage = Usage()
-                final_usage = usage
-            else:
-                # Intermediate chunk - empty usage
-                usage = Usage()
+        # Add assistant message placeholder (will be updated during streaming)
+        self._history.add_assistant("")
 
-            yield ChatStreamChunk(
-                delta=content,
-                done=done,
-                usage=usage,
-                finish_reason=finish_reason,
-                raw=event_data if return_raw_events else {},
-            )
+        # Wrap iterator to update history
+        class HistoryUpdatingIterator(StreamingIterator):
+            """Iterator wrapper that updates history on each chunk."""
+
+            def __init__(self, base_iterator: StreamingIterator, history: ChatHistory):
+                # Initialize with base iterator's internal iterator
+                super().__init__(base_iterator._iterator)
+                self._base = base_iterator
+                self._history = history
+                # Use base iterator's result (which is already accumulating)
+                self._result = base_iterator.result
+
+            def __iter__(self) -> Iterator[ChatStreamChunk]:
+                """Iterate chunks and update history."""
+                for chunk in self._base:
+                    # Update history's last assistant message with current accumulated text
+                    if (
+                        self._history.messages
+                        and self._history.messages[-1].get("role") == "assistant"
+                    ):
+                        self._history.messages[-1]["content"] = self.result.text
+                    yield chunk
+
+            @property
+            def result(self) -> StreamingResult:
+                """Get accumulated result."""
+                return self._result
+
+        return HistoryUpdatingIterator(iterator, self._history)
+
+    def get_history(self) -> ChatHistory | None:
+        """
+        Get automatically recorded history (if auto_history=True).
+
+        Returns:
+            ChatHistory instance if auto_history is enabled, None otherwise.
+
+        Examples:
+            >>> chat = Chat(..., auto_history=True)
+            >>> result = chat("Hello")
+            >>> history = chat.get_history()  # Contains complete conversation
+        """
+        return self._history
+
+    def clear_history(self) -> None:
+        """
+        Clear automatically recorded history.
+
+        Examples:
+            >>> chat.clear_history()  # Reset conversation history
+        """
+        self._history = None
+
+    def chat_with_history(
+        self,
+        history: ChatHistory,
+        **params,
+    ) -> ChatResult:
+        """
+        Make a chat completion request using history.
+
+        Args:
+            history: ChatHistory instance to use.
+            **params: Additional parameters to pass to __call__.
+
+        Returns:
+            ChatResult from the API call.
+
+        Examples:
+            >>> history = ChatHistory.from_messages("Hello")
+            >>> result = chat.chat_with_history(history, temperature=0.7)
+        """
+        return self(history.get_messages(), **params)
+
+    def stream_with_history(
+        self,
+        history: ChatHistory,
+        **params,
+    ) -> StreamingIterator:
+        """
+        Make a streaming chat completion request using history.
+
+        Args:
+            history: ChatHistory instance to use.
+            **params: Additional parameters to pass to stream().
+
+        Returns:
+            StreamingIterator for the streaming response.
+
+        Examples:
+            >>> history = ChatHistory.from_messages("Hello")
+            >>> iterator = chat.stream_with_history(history, temperature=0.7)
+            >>> for chunk in iterator:
+            ...     print(chunk.delta, end="")
+        """
+        return self.stream(history.get_messages(), **params)

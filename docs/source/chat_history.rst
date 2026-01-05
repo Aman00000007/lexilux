@@ -173,6 +173,9 @@ Remove the most recent conversation round:
 Token Management
 ----------------
 
+Lexilux provides comprehensive token analysis capabilities for conversation history.
+For detailed token analysis, see :doc:`token_analysis`.
+
 Count Tokens
 ~~~~~~~~~~~~
 
@@ -197,6 +200,43 @@ Count tokens for each conversation round:
    # Returns: [(round_index, tokens), ...]
    for idx, tokens in round_tokens:
        print(f"Round {idx}: {tokens} tokens")
+
+Count Tokens By Role
+~~~~~~~~~~~~~~~~~~~~
+
+Count tokens grouped by role (system, user, assistant):
+
+.. code-block:: python
+
+   role_tokens = history.count_tokens_by_role(tokenizer)
+   print(f"System tokens: {role_tokens['system']}")
+   print(f"User tokens: {role_tokens['user']}")
+   print(f"Assistant tokens: {role_tokens['assistant']}")
+
+Comprehensive Token Analysis
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Get detailed token analysis with per-message and per-round breakdowns:
+
+.. code-block:: python
+
+   from lexilux import TokenAnalysis
+
+   analysis = history.analyze_tokens(tokenizer)
+   
+   # Summary statistics
+   print(f"Total: {analysis.total_tokens}")
+   print(f"User: {analysis.user_tokens}, Assistant: {analysis.assistant_tokens}")
+   
+   # Per-message breakdown
+   for role, preview, tokens in analysis.per_message:
+       print(f"{role}: {preview}... ({tokens} tokens)")
+   
+   # Per-round breakdown
+   for idx, total, user, assistant in analysis.per_round:
+       print(f"Round {idx}: total={total}, user={user}, assistant={assistant}")
+
+For more details, see :doc:`token_analysis`.
 
 Truncate by Rounds
 ~~~~~~~~~~~~~~~~~~

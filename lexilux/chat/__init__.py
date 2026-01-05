@@ -5,8 +5,16 @@ Provides Chat client, result models, and parameter configuration for chat comple
 """
 
 from lexilux.chat.client import Chat
+from lexilux.chat.continue_ import ChatContinue
 from lexilux.chat.formatters import ChatHistoryFormatter
-from lexilux.chat.history import ChatHistory
+from lexilux.chat.history import (
+    ChatHistory,
+    TokenAnalysis,
+    filter_by_role,
+    get_statistics,
+    merge_histories,
+    search_content,
+)
 from lexilux.chat.models import ChatResult, ChatStreamChunk, MessagesLike, Role
 from lexilux.chat.params import ChatParams
 from lexilux.chat.streaming import StreamingIterator, StreamingResult
@@ -18,9 +26,16 @@ __all__ = [
     "ChatParams",
     "ChatHistory",
     "ChatHistoryFormatter",
+    "ChatContinue",
     "StreamingResult",
     "StreamingIterator",
+    "TokenAnalysis",
     "Role",
     "MessageLike",
     "MessagesLike",
+    # Utility functions
+    "merge_histories",
+    "filter_by_role",
+    "search_content",
+    "get_statistics",
 ]
