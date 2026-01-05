@@ -24,10 +24,11 @@ Result Models
    :show-inheritance:
 
 Parameter Configuration
-~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~
 
 .. autoclass:: lexilux.embed_params.EmbedParams
    :members:
    :undoc-members:
    :show-inheritance:
+   :no-index:
 

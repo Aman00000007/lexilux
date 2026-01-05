@@ -99,7 +99,7 @@ test-integration:
 	$(PYTHON_CMD) -m pytest tests/ -v -m integration
 
 lint:
-	$(PYTHON_CMD) -m ruff check lexilux/ tests/ examples/ --output-format=concise
+	$(PYTHON_CMD) -m ruff check lexilux/ tests/ examples/ --output-format=concise --no-fix
 
 format:
 	$(PYTHON_CMD) -m ruff format lexilux/ tests/ examples/
@@ -170,10 +170,10 @@ upload-test: check-package
 		--username __token__ \
 		--password $$TEST_PYPI_TOKEN
 
-docs:
+docs: clean-docs
 	cd docs && make html
 
-html:
+html: clean-docs
 	cd docs && make html
 
 clean:

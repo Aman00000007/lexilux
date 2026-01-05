@@ -10,6 +10,7 @@ Overview
 The ``ChatHistory`` class eliminates the need for manual history maintenance by providing:
 
 * **Automatic extraction** from any Chat call or message list
+* **Automatic history management** via ``auto_history`` feature (see :doc:`auto_history`)
 * **Serialization** to/from JSON for persistence
 * **Token counting and truncation** for context window management
 * **Round-based operations** for conversation management
@@ -18,19 +19,46 @@ The ``ChatHistory`` class eliminates the need for manual history maintenance by 
 Key Features
 ------------
 
-1. **Zero Maintenance**: Extract history from any Chat call automatically
+1. **Zero Maintenance**: Extract history from any Chat call automatically, or use ``auto_history=True`` for automatic recording
 2. **Flexible Input**: Supports all message formats (string, list of strings, list of dicts)
 3. **Serialization**: Save and load conversations as JSON
 4. **Token Management**: Count tokens and truncate by rounds to fit context windows
 5. **Format Export**: Export to Markdown, HTML, Text, or JSON formats
+6. **Automatic History**: Use ``Chat(..., auto_history=True)`` for zero-maintenance conversation tracking
 
 Basic Usage
 -----------
 
-Automatic Extraction (Recommended)
+Automatic History (Simplest - Recommended)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The simplest way is to use ``auto_history=True`` when creating the Chat client.
+This automatically records all conversations with zero maintenance:
+
+.. code-block:: python
+
+   from lexilux import Chat
+
+   # Enable auto_history - simplest approach
+   chat = Chat(..., auto_history=True)
+
+   # Just chat - history is automatically recorded
+   result1 = chat("What is Python?")
+   result2 = chat("Tell me more")
+
+   # Get complete history at any time
+   history = chat.get_history()
+   print(f"Total messages: {len(history.messages)}")
+
+   # Clear when starting new topic
+   chat.clear_history()
+
+For detailed guide on auto_history, see :doc:`auto_history`.
+
+Automatic Extraction (Alternative)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The easiest way to use ChatHistory is to extract it from Chat calls:
+Alternatively, you can extract history from Chat calls manually:
 
 .. code-block:: python
 
@@ -271,10 +299,13 @@ Truncate history to fit within a token limit, keeping the most recent rounds:
 Best Practices
 --------------
 
-1. **Use Automatic Extraction**: Prefer ``ChatHistory.from_chat_result()`` over
+1. **Use Auto History When Possible**: For simplest usage, use ``Chat(..., auto_history=True)``.
+   This eliminates all manual history management. See :doc:`auto_history` for details.
+
+2. **Use Automatic Extraction**: If not using auto_history, prefer ``ChatHistory.from_chat_result()`` over
    manual construction. It's simpler and less error-prone.
 
-2. **Serialize Regularly**: Save important conversations to JSON for persistence:
+3. **Serialize Regularly**: Save important conversations to JSON for persistence:
 
    .. code-block:: python
 
@@ -282,7 +313,7 @@ Best Practices
       with open(f"conversation_{timestamp}.json", "w") as f:
           f.write(history.to_json())
 
-3. **Manage Context Windows**: Use token counting and truncation before long conversations:
+4. **Manage Context Windows**: Use token counting and truncation before long conversations:
 
    .. code-block:: python
 
@@ -290,8 +321,27 @@ Best Practices
       if history.count_tokens(tokenizer) > max_context:
           history = history.truncate_by_rounds(tokenizer, max_tokens=max_context)
 
-4. **Handle Incomplete Rounds**: Be aware that incomplete rounds (user message without
+5. **Handle Incomplete Rounds**: Be aware that incomplete rounds (user message without
    assistant response) are preserved. Use ``remove_last_round()`` if needed.
+
+6. **Use Token Analysis for Insights**: Use ``analyze_tokens()`` to understand token distribution
+   and identify optimization opportunities:
+
+   .. code-block:: python
+
+      from lexilux import Tokenizer, TokenAnalysis
+
+      tokenizer = Tokenizer("Qwen/Qwen2.5-7B-Instruct")
+      analysis = history.analyze_tokens(tokenizer)
+
+      # Identify token-heavy rounds
+      for idx, total, user, assistant in analysis.per_round:
+          if total > 500:  # Round uses more than 500 tokens
+              print(f"Round {idx} is token-heavy: {total} tokens")
+
+      # Check distribution
+      if analysis.assistant_tokens > analysis.user_tokens * 3:
+          print("Assistant responses are much longer than user messages")
 
 Common Pitfalls
 ---------------
@@ -335,4 +385,158 @@ Common Pitfalls
 
 4. **Token Counting Performance**: Token counting can be slow for long histories.
    Consider caching results or only counting when necessary.
+
+5. **Using Auto History Incorrectly**: Remember that ``auto_history=True`` must be set
+   when creating the Chat client. It defaults to ``False``:
+
+   .. code-block:: python
+
+      # Wrong - auto_history defaults to False
+      chat = Chat(...)
+      chat("Hello")
+      history = chat.get_history()  # Returns None!
+
+      # Correct - explicitly enable
+      chat = Chat(..., auto_history=True)
+      chat("Hello")
+      history = chat.get_history()  # Returns ChatHistory
+
+6. **Not Clearing History Between Sessions**: When using auto_history, remember to
+   clear history when starting new conversation topics:
+
+   .. code-block:: python
+
+      chat = Chat(..., auto_history=True)
+      
+      # Session 1
+      chat("What is Python?")
+      
+      # Session 2 - should clear first
+      chat.clear_history()
+      chat("What is JavaScript?")
+
+Utility Functions
+-----------------
+
+Lexilux provides utility functions for common history operations:
+
+Merge Histories
+~~~~~~~~~~~~~~~
+
+Merge multiple conversation histories:
+
+.. code-block:: python
+
+   from lexilux.chat import merge_histories
+
+   history1 = ChatHistory.from_messages("Hello")
+   history1.add_assistant("Hi!")
+   
+   history2 = ChatHistory.from_messages("How are you?")
+   history2.add_assistant("I'm fine!")
+
+   # Merge histories
+   merged = merge_histories(history1, history2)
+   assert len(merged.messages) == 4  # 2 user + 2 assistant
+
+   # Useful for combining conversations from different sessions
+
+Filter by Role
+~~~~~~~~~~~~~~
+
+Filter history to show only messages from a specific role:
+
+.. code-block:: python
+
+   from lexilux.chat import filter_by_role
+
+   history = ChatHistory.from_messages(["Hello", "Hi there", "How are you?"])
+   history.add_assistant("I'm doing well!")
+
+   # Get only user messages
+   user_only = filter_by_role(history, "user")
+   assert len(user_only.messages) == 3
+   assert all(msg["role"] == "user" for msg in user_only.messages)
+
+   # Get only assistant messages
+   assistant_only = filter_by_role(history, "assistant")
+   assert len(assistant_only.messages) == 1
+
+   # Useful for analyzing user questions or assistant responses separately
+
+Search Content
+~~~~~~~~~~~~~~
+
+Search for messages containing specific text:
+
+.. code-block:: python
+
+   from lexilux.chat import search_content
+
+   history = ChatHistory.from_messages([
+       "What is Python?",
+       "How do I use it?",
+       "Show me examples"
+   ])
+   history.add_assistant("Python is a programming language...")
+
+   # Search for messages containing "Python"
+   results = search_content(history, "Python")
+   assert len(results) >= 1
+   assert any("Python" in msg.get("content", "") for msg in results)
+
+   # Useful for finding specific topics in long conversations
+
+Get Statistics
+~~~~~~~~~~~~~~
+
+Get comprehensive statistics about the conversation:
+
+.. code-block:: python
+
+   from lexilux.chat import get_statistics
+   from lexilux import Tokenizer
+
+   history = ChatHistory(system="You are helpful")
+   history.add_user("Hello")
+   history.add_assistant("Hi!")
+
+   # Character-based statistics (no tokenizer needed)
+   stats = get_statistics(history)
+   print(f"Total rounds: {stats['total_rounds']}")
+   print(f"Total messages: {stats['total_messages']}")
+   print(f"Total characters: {stats['total_characters']}")
+   print(f"Average message length: {stats['average_message_length']} chars")
+
+   # With tokenizer - includes comprehensive token statistics
+   tokenizer = Tokenizer("Qwen/Qwen2.5-7B-Instruct")
+   stats = get_statistics(history, tokenizer=tokenizer)
+   print(f"Total tokens: {stats['total_tokens']}")
+   print(f"Tokens by role: {stats['tokens_by_role']}")
+   print(f"Average tokens per message: {stats['average_tokens_per_message']}")
+   print(f"Average tokens per round: {stats['average_tokens_per_round']}")
+   print(f"Max message tokens: {stats['max_message_tokens']}")
+   print(f"Min message tokens: {stats['min_message_tokens']}")
+
+   # Access full TokenAnalysis object
+   analysis = stats['token_analysis']
+   print(f"Per-message breakdown: {len(analysis.per_message)} messages")
+   print(f"Per-round breakdown: {len(analysis.per_round)} rounds")
+
+.. note::
+   When tokenizer is provided, ``get_statistics()`` includes comprehensive token
+   analysis. See :doc:`token_analysis` for details on the TokenAnalysis object.
+
+.. important::
+   **Common Pitfall**: Forgetting to pass tokenizer when you need token statistics.
+   
+   .. code-block:: python
+
+      # Wrong - no token statistics
+      stats = get_statistics(history)
+      assert "total_tokens" not in stats  # Token stats not included!
+      
+      # Correct - pass tokenizer for token statistics
+      stats = get_statistics(history, tokenizer=tokenizer)
+      assert "total_tokens" in stats  # Token stats included
 

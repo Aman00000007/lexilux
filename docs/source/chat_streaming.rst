@@ -45,20 +45,20 @@ The simplest way to use streaming is to iterate directly over ``chat.stream()``:
            print(f"\\n\\nUsage: {chunk.usage.total_tokens} tokens")
            print(f"Finish reason: {chunk.finish_reason}")
 
-Automatic Accumulation with StreamingIterator
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Automatic Accumulation (Default Behavior)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-For automatic text accumulation, wrap the stream with ``StreamingIterator``:
+``chat.stream()`` now returns ``StreamingIterator`` automatically, providing
+automatic text accumulation:
 
 .. code-block:: python
 
    from lexilux import Chat
-   from lexilux.chat import StreamingIterator
 
    chat = Chat(base_url="https://api.example.com/v1", api_key="key", model="gpt-4")
 
-   # Wrap stream with StreamingIterator for automatic accumulation
-   iterator = StreamingIterator(chat.stream("Tell me a story"))
+   # chat.stream() returns StreamingIterator automatically
+   iterator = chat.stream("Tell me a story")
 
    # Iterate chunks
    for chunk in iterator:
@@ -71,6 +71,11 @@ For automatic text accumulation, wrap the stream with ``StreamingIterator``:
    complete_result = iterator.result.to_chat_result()
    print(f"\\nComplete text: {complete_result.text}")
    print(f"Finish reason: {complete_result.finish_reason}")
+
+.. note::
+   ``chat.stream()`` now returns ``StreamingIterator`` by default. You no longer
+   need to manually wrap it. The iterator provides automatic text accumulation
+   and real-time access to the accumulated result.
 
 Accessing Accumulated Result
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -103,13 +108,14 @@ Integration with History
 Convert to ChatResult
 ~~~~~~~~~~~~~~~~~~~~~
 
-After streaming with ``StreamingIterator``, convert the accumulated result to ``ChatResult`` for history management:
+After streaming, convert the accumulated result to ``ChatResult`` for history management:
 
 .. code-block:: python
 
-   from lexilux.chat import ChatHistory, StreamingIterator
+   from lexilux.chat import ChatHistory
 
-   iterator = StreamingIterator(chat.stream("Tell me a story"))
+   # chat.stream() returns StreamingIterator automatically
+   iterator = chat.stream("Tell me a story")
    for chunk in iterator:
        print(chunk.delta, end="")
 
@@ -124,16 +130,17 @@ After streaming with ``StreamingIterator``, convert the accumulated result to ``
 Real-time History Updates
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-You can update history in real-time during streaming with ``StreamingIterator``:
+You can update history in real-time during streaming:
 
 .. code-block:: python
 
-   from lexilux.chat import ChatHistory, StreamingIterator
+   from lexilux.chat import ChatHistory
 
    history = ChatHistory()
    history.add_user("Tell me a story")
 
-   iterator = StreamingIterator(chat.stream(history.get_messages()))
+   # chat.stream() returns StreamingIterator automatically
+   iterator = chat.stream(history.get_messages())
    for chunk in iterator:
        print(chunk.delta, end="")
        # Update history with current accumulated text
@@ -149,13 +156,12 @@ You can update history in real-time during streaming with ``StreamingIterator``:
 Handling Interruptions
 ----------------------
 
-If streaming is interrupted, the accumulated result in ``StreamingIterator`` still contains what was received:
+If streaming is interrupted, the accumulated result still contains what was received:
 
 .. code-block:: python
 
-   from lexilux.chat import StreamingIterator
-
-   iterator = StreamingIterator(chat.stream("Write a long story"))
+   # chat.stream() returns StreamingIterator automatically
+   iterator = chat.stream("Write a long story")
 
    try:
        for chunk in iterator:
@@ -176,13 +182,12 @@ If streaming is interrupted, the accumulated result in ``StreamingIterator`` sti
 Best Practices
 --------------
 
-1. **Check Completion**: Always check if streaming completed (with StreamingIterator):
+1. **Check Completion**: Always check if streaming completed:
 
    .. code-block:: python
 
-      from lexilux.chat import StreamingIterator
-
-      iterator = StreamingIterator(chat.stream("Tell me a story"))
+      # chat.stream() returns StreamingIterator automatically
+      iterator = chat.stream("Tell me a story")
       for chunk in iterator:
           print(chunk.delta, end="")
 
@@ -194,32 +199,27 @@ Best Practices
           # Interrupted or incomplete
           print("Streaming was interrupted")
 
-2. **Update History Efficiently**: Don't update history on every chunk (with StreamingIterator):
+2. **Update History Efficiently**: Don't update history on every chunk:
 
    .. code-block:: python
 
-      from lexilux.chat import StreamingIterator
-
-      iterator = StreamingIterator(chat.stream("Tell me a story"))
-
       # Less efficient - updates on every chunk
+      iterator = chat.stream("Tell me a story")
       for chunk in iterator:
           history.update_last_assistant(iterator.result.text)
 
       # More efficient - update only at the end
-      iterator = StreamingIterator(chat.stream("Tell me a story"))
+      iterator = chat.stream("Tell me a story")
       for chunk in iterator:
           print(chunk.delta, end="")
       if iterator.result.done:
           history.update_last_assistant(iterator.result.text)
 
-3. **Handle Partial Results**: Be prepared for incomplete results (with StreamingIterator):
+3. **Handle Partial Results**: Be prepared for incomplete results:
 
    .. code-block:: python
 
-      from lexilux.chat import StreamingIterator
-
-      iterator = StreamingIterator(chat.stream("Write a story"))
+      iterator = chat.stream("Write a story")
       try:
           for chunk in iterator:
               print(chunk.delta, end="")
@@ -230,13 +230,11 @@ Best Practices
               partial_result = iterator.result.to_chat_result()
               history.append_result(partial_result)
 
-4. **Monitor Progress**: Use accumulated text to monitor progress (with StreamingIterator):
+4. **Monitor Progress**: Use accumulated text to monitor progress:
 
    .. code-block:: python
 
-      from lexilux.chat import StreamingIterator
-
-      iterator = StreamingIterator(chat.stream("Write a long story"))
+      iterator = chat.stream("Write a long story")
       for chunk in iterator:
           print(chunk.delta, end="")
           # Monitor progress
@@ -247,20 +245,18 @@ Common Pitfalls
 ---------------
 
 1. **Assuming Completion**: Don't assume streaming completed just because
-   the loop ended. Always check ``iterator.result.done`` (with StreamingIterator):
+   the loop ended. Always check ``iterator.result.done``:
 
    .. code-block:: python
 
-      from lexilux.chat import StreamingIterator
-
       # Wrong - may be incomplete
-      iterator = StreamingIterator(chat.stream("Tell me a story"))
+      iterator = chat.stream("Tell me a story")
       for chunk in iterator:
           pass
       result = iterator.result.to_chat_result()  # May be incomplete!
 
       # Correct - check completion
-      iterator = StreamingIterator(chat.stream("Tell me a story"))
+      iterator = chat.stream("Tell me a story")
       for chunk in iterator:
           pass
       if iterator.result.done:
@@ -276,13 +272,11 @@ Common Pitfalls
 
 3. **Result State During Iteration**: The result is updated during iteration,
    but ``done`` and ``finish_reason`` are only set when a chunk with ``done=True``
-   arrives (with StreamingIterator):
+   arrives:
 
    .. code-block:: python
 
-      from lexilux.chat import StreamingIterator
-
-      iterator = StreamingIterator(chat.stream("Tell me a story"))
+      iterator = chat.stream("Tell me a story")
       for chunk in iterator:
           # result.text is updated immediately
           # but result.done is False until done=True chunk arrives
@@ -295,12 +289,16 @@ Common Pitfalls
 
    .. code-block:: python
 
-      # Works with or without StreamingIterator
-      for chunk in chat.stream("Tell me a story"):
+      iterator = chat.stream("Tell me a story")
+      for chunk in iterator:
           # chunk.usage may be empty for intermediate chunks
           if chunk.done:
               # Now usage is complete
               print(f"Tokens: {chunk.usage.total_tokens}")
+              
+      # Or access from iterator.result after completion
+      if iterator.result.done:
+          print(f"Total tokens: {iterator.result.usage.total_tokens}")
 
 Examples
 --------
@@ -311,14 +309,15 @@ Complete Streaming Workflow
 .. code-block:: python
 
    from lexilux import Chat
-   from lexilux.chat import ChatHistory, ChatHistoryFormatter, StreamingIterator
+   from lexilux.chat import ChatHistory, ChatHistoryFormatter
 
    chat = Chat(base_url="https://api.example.com/v1", api_key="key", model="gpt-4")
 
    history = ChatHistory(system="You are a storyteller")
    history.add_user("Tell me a story about Python")
 
-   iterator = StreamingIterator(chat.stream(history.get_messages()))
+   # chat.stream() returns StreamingIterator automatically
+   iterator = chat.stream(history.get_messages())
 
    # Stream and display
    for chunk in iterator:
@@ -333,14 +332,32 @@ Complete Streaming Workflow
        # Export conversation
        ChatHistoryFormatter.save(history, "story.md")
 
+Streaming with Auto History
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: python
+
+   from lexilux import Chat
+
+   # Enable auto_history for automatic recording
+   chat = Chat(..., auto_history=True)
+
+   # Stream - history is automatically updated
+   iterator = chat.stream("Tell me a story")
+   for chunk in iterator:
+       print(chunk.delta, end="")
+
+   # History already contains complete conversation
+   history = chat.get_history()
+   assert len(history.messages) == 2  # user + assistant
+   assert len(history.messages[1]["content"]) > 0
+
 Progress Monitoring
 ~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: python
 
-   from lexilux.chat import StreamingIterator
-
-   iterator = StreamingIterator(chat.stream("Write a long article"))
+   iterator = chat.stream("Write a long article")
 
    last_length = 0
    for chunk in iterator:
@@ -359,9 +376,7 @@ Error Recovery
 
 .. code-block:: python
 
-   from lexilux.chat import StreamingIterator
-
-   iterator = StreamingIterator(chat.stream("Write a long story"))
+   iterator = chat.stream("Write a long story")
 
    try:
        for chunk in iterator:

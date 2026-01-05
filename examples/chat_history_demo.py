@@ -58,7 +58,7 @@ def demo_basic_history():
         result2,
     )
     print(f"   Messages: {len(history.messages)}")
-    print(f"   Complete conversation tracked automatically!")
+    print("   Complete conversation tracked automatically!")
 
 
 def demo_serialization():
@@ -139,4 +139,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

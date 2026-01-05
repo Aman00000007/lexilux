@@ -27,7 +27,7 @@ class ChatContinue:
 
     @staticmethod
     def continue_request(
-        chat: "Chat",
+        chat: Chat,
         history: ChatHistory,
         last_result: ChatResult,
         *,
@@ -133,4 +133,3 @@ class ChatContinue:
             finish_reason=finish_reason,
             raw=merged_raw,
         )
-

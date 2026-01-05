@@ -9,16 +9,14 @@ Tests cover:
 - Integration with truncation
 """
 
-import pytest
-
-from lexilux import ChatHistory, ChatResult, TokenAnalysis, Usage
+from lexilux import ChatHistory, TokenAnalysis
 from lexilux.chat import get_statistics
 
 
 class MockTokenizer:
     """
     Mock tokenizer for testing that counts words as tokens.
-    
+
     This mock follows the TokenizeResult interface:
     - TokenizeResult(input_ids, attention_mask, usage, raw)
     - usage.total_tokens contains the token count
@@ -30,7 +28,7 @@ class MockTokenizer:
     def __call__(self, text: str):
         """
         Count words as tokens for testing.
-        
+
         Returns TokenizeResult following the interface:
         - input_ids: list[list[int]] - token IDs
         - attention_mask: list[list[int]] | None
@@ -41,18 +39,18 @@ class MockTokenizer:
 
         words = text.split()
         token_count = len(words) if words else 0
-        
+
         # Create usage with total_tokens
         usage = Usage(
             input_tokens=token_count,
             output_tokens=None,
             total_tokens=token_count,
         )
-        
+
         # Create input_ids (list of token ID sequences)
         # For simplicity, use word index as token ID
         input_ids = [[i for i in range(token_count)]] if token_count > 0 else [[]]
-        
+
         return TokenizeResult(
             input_ids=input_ids,
             attention_mask=None,
@@ -602,4 +600,3 @@ class TestTokenAnalysisEdgeCases:
         # Preview should handle newlines
         user_msg = next((msg for msg in analysis.per_message if msg[0] == "user"), None)
         assert user_msg is not None
-

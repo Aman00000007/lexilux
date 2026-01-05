@@ -7,9 +7,13 @@ Key Features
 ------------
 
 * **Function-like API**: Call APIs like functions (``chat("hi")``, ``embed(["text"])``)
-* **Streaming Support**: Built-in streaming for Chat with usage tracking
+* **Streaming Support**: Built-in streaming for Chat with automatic text accumulation
+* **Automatic History Management**: Zero-maintenance conversation tracking with ``auto_history=True``
+* **Continue Generation**: Seamlessly continue cut-off responses with ``ChatContinue``
+* **Comprehensive Token Analysis**: Detailed token statistics and analysis for conversation history
 * **Unified Usage**: Consistent usage statistics across all APIs
 * **Flexible Input**: Support multiple input formats (string, list, dict)
+* **History Management**: Automatic extraction, serialization, and multi-format export
 * **Optional Dependencies**: Tokenizer requires transformers only when needed
 * **OpenAI-Compatible**: Works with OpenAI-compatible APIs
 

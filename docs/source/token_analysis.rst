@@ -398,14 +398,246 @@ Common Use Cases
           for role, preview, tokens in analysis.per_message:
               if tokens > 1000:
                   print(f"Large message: {role} - {tokens} tokens")
+                  print(f"Preview: {preview}")
+
+5. **Cost Estimation**: Estimate API costs based on token usage:
+
+   .. code-block:: python
+
+      analysis = history.analyze_tokens(tokenizer)
+      
+      # Estimate costs (example prices)
+      input_price_per_1k = 0.001  # $0.001 per 1K input tokens
+      output_price_per_1k = 0.002  # $0.002 per 1K output tokens
+      
+      input_cost = (analysis.user_tokens + analysis.system_tokens) / 1000 * input_price_per_1k
+      output_cost = analysis.assistant_tokens / 1000 * output_price_per_1k
+      total_cost = input_cost + output_cost
+      
+      print(f"Estimated cost: ${total_cost:.4f}")
+      print(f"  Input: ${input_cost:.4f} ({analysis.user_tokens + analysis.system_tokens} tokens)")
+      print(f"  Output: ${output_cost:.4f} ({analysis.assistant_tokens} tokens)")
+
+6. **Token Growth Monitoring**: Track how tokens grow across rounds:
+
+   .. code-block:: python
+
+      analysis = history.analyze_tokens(tokenizer)
+      
+      cumulative = analysis.system_tokens
+      print(f"System: {cumulative} tokens")
+      
+      for idx, total, user, assistant in analysis.per_round:
+          cumulative += total
+          print(f"After round {idx}: {cumulative} tokens "
+                f"(+{total}: user={user}, assistant={assistant})")
+          
+          # Warn if getting close to limit
+          if cumulative > 3500:  # Close to 4K limit
+              print(f"  WARNING: Approaching context limit!")
+
+Common Pitfalls
+---------------
+
+Pitfall 1: Not Using result.usage.total_tokens
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+**Problem**: Trying to access ``result.total_tokens`` directly instead of ``result.usage.total_tokens``.
+
+.. code-block:: python
+
+   # Wrong - TokenizeResult doesn't have total_tokens attribute
+   result = tokenizer("Hello")
+   tokens = result.total_tokens  # AttributeError!
+
+   # Correct - access via usage
+   result = tokenizer("Hello")
+   tokens = result.usage.total_tokens  # Works!
+
+**Solution**: Always use ``result.usage.total_tokens`` when working with TokenizeResult.
+
+Pitfall 2: Not Caching Analysis Results
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+**Problem**: Calling ``analyze_tokens()`` multiple times is slow for long histories.
+
+.. code-block:: python
+
+   # Wrong - analyzes multiple times
+   if history.analyze_tokens(tokenizer).total_tokens > 4000:
+       truncated = history.truncate_by_rounds(tokenizer, 4000)
+       # analyze_tokens() called again in truncate_by_rounds()
+       new_analysis = truncated.analyze_tokens(tokenizer)  # Third call!
+
+   # Correct - cache analysis
+   analysis = history.analyze_tokens(tokenizer)
+   if analysis.total_tokens > 4000:
+       truncated = history.truncate_by_rounds(tokenizer, 4000)
+       # Re-analyze only if needed
+       new_analysis = truncated.analyze_tokens(tokenizer)
+
+**Solution**: Cache analysis results and reuse them when possible.
+
+Pitfall 3: Misunderstanding Per-Round Analysis
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+**Problem**: Not understanding that per_round includes both user and assistant messages.
+
+.. code-block:: python
+
+   # Per-round analysis includes BOTH user and assistant
+   analysis = history.analyze_tokens(tokenizer)
+   for idx, total, user, assistant in analysis.per_round:
+       # total == user + assistant (for that round)
+       assert total == user + assistant
+
+**Solution**: Understand that each round's total includes both user and assistant tokens.
+
+Pitfall 4: Not Handling Empty History
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+**Problem**: Calling token analysis on empty history may cause confusion.
+
+.. code-block:: python
+
+   history = ChatHistory()  # Empty
+   analysis = history.analyze_tokens(tokenizer)
+   
+   # All values are 0
+   assert analysis.total_tokens == 0
+   assert len(analysis.per_message) == 0
+   assert len(analysis.per_round) == 0
+
+**Solution**: Check if history is empty before analyzing, or handle zero values gracefully.
+
+Pitfall 5: Tokenizer Model Mismatch
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+**Problem**: Using a tokenizer model that doesn't match the chat model can give inaccurate counts.
+
+.. code-block:: python
+
+   # Wrong - tokenizer model doesn't match chat model
+   chat = Chat(..., model="gpt-4")
+   tokenizer = Tokenizer("Qwen/Qwen2.5-7B-Instruct")  # Different model!
+   analysis = history.analyze_tokens(tokenizer)  # May be inaccurate
+
+   # Correct - use matching model (if possible)
+   # Or at least use a similar model family
+   tokenizer = Tokenizer("gpt-4")  # Or similar model
+
+**Solution**: Use a tokenizer model that matches or is similar to your chat model.
+
+Pitfall 6: Not Checking Tokenizer Availability
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+**Problem**: Tokenizer requires optional dependencies that may not be installed.
+
+.. code-block:: python
+
+   # Wrong - may fail if transformers not installed
+   from lexilux import Tokenizer
+   tokenizer = Tokenizer("model")  # May raise ImportError
+
+   # Correct - handle import error
+   try:
+       from lexilux import Tokenizer
+       tokenizer = Tokenizer("model")
+   except ImportError:
+       print("Tokenizer requires transformers library")
+       print("Install with: pip install lexilux[tokenizer]")
+       tokenizer = None
+
+**Solution**: Handle ImportError and provide clear error messages.
+
+Best Practices
+--------------
+
+1. **Cache Analysis Results**: Token analysis can be slow. Cache results when possible:
+
+   .. code-block:: python
+
+      # Cache once
+      analysis = history.analyze_tokens(tokenizer)
+      
+      # Reuse multiple times
+      if analysis.total_tokens > threshold:
+          # Use cached analysis
+          pass
+      
+      # Re-analyze only when history changes
+      history.add_user("New message")
+      new_analysis = history.analyze_tokens(tokenizer)  # Re-analyze
+
+2. **Monitor Token Growth**: Track token growth as conversation progresses:
+
+   .. code-block:: python
+
+      # After each round
+      analysis = history.analyze_tokens(tokenizer)
+      if analysis.total_tokens > threshold:
+          # Take action (truncate, warn, etc.)
+          truncated = history.truncate_by_rounds(tokenizer, max_tokens=threshold)
+          history = truncated
+
+3. **Use Per-Round Analysis for Truncation**: When truncating, use per-round
+   analysis to make informed decisions:
+
+   .. code-block:: python
+
+      analysis = history.analyze_tokens(tokenizer)
+      
+      # Review per_round to decide which rounds to keep
+      for idx, total, user, assistant in analysis.per_round:
+          print(f"Round {idx}: {total} tokens")
+          if total > 500:
+              print(f"  WARNING: Round {idx} is token-heavy")
+
+4. **Combine with Statistics**: Use ``get_statistics()`` with tokenizer for
+   comprehensive analysis:
+
+   .. code-block:: python
+
+      from lexilux.chat import get_statistics
+      
+      stats = get_statistics(history, tokenizer=tokenizer)
+      # Includes both character and token statistics
+      print(f"Characters: {stats['total_characters']}")
+      print(f"Tokens: {stats['total_tokens']}")
+      print(f"Average tokens per message: {stats['average_tokens_per_message']}")
+
+5. **Validate Tokenizer Model**: Ensure tokenizer model is appropriate:
+
+   .. code-block:: python
+
+      # Check if tokenizer model is available
+      try:
+           tokenizer = Tokenizer("your-model")
+           # Test with a simple string
+           result = tokenizer("test")
+           assert result.usage.total_tokens > 0
+      except Exception as e:
+           print(f"Tokenizer error: {e}")
+           # Use fallback or handle error
+
+6. **Handle Large Histories**: For very long histories, consider analyzing in chunks:
+
+   .. code-block:: python
+
+      # For very long histories, analyze recent rounds only
+      recent_rounds = history.get_last_n_rounds(10)
+      analysis = recent_rounds.analyze_tokens(tokenizer)
+      
+      # Or analyze incrementally
+      for i in range(0, len(history.messages), 10):
+          chunk = ChatHistory(messages=history.messages[i:i+10])
+          chunk_analysis = chunk.analyze_tokens(tokenizer)
+          print(f"Chunk {i//10}: {chunk_analysis.total_tokens} tokens")
 
 API Reference
 -------------
 
-.. autoclass:: lexilux.chat.history.TokenAnalysis
-   :members:
-   :undoc-members:
-   :show-inheritance:
+For complete API reference, see :doc:`api_reference/chat`.
 
 .. autoclass:: lexilux.chat.history.ChatHistory
    :members: count_tokens, count_tokens_per_round, count_tokens_by_role, analyze_tokens

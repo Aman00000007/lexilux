@@ -145,10 +145,8 @@ serialization, and formatting capabilities.
 
 .. code-block:: python
 
-   from lexilux.chat import StreamingIterator
-
-   # Wrap stream with StreamingIterator for automatic accumulation
-   iterator = StreamingIterator(chat.stream("Tell me a story"))
+   # chat.stream() now returns StreamingIterator automatically
+   iterator = chat.stream("Tell me a story")
    for chunk in iterator:
        print(chunk.delta, end="")
        # Access accumulated text at any time
@@ -157,6 +155,73 @@ serialization, and formatting capabilities.
    # After streaming, convert to ChatResult and add to history
    result = iterator.result.to_chat_result()
    history.append_result(result)
+
+**Automatic History (Recommended for Simplicity)**:
+
+.. code-block:: python
+
+   # Enable auto_history - simplest way to manage conversations
+   chat = Chat(..., auto_history=True)
+   
+   # Just chat - history is automatically recorded
+   chat("What is Python?")
+   chat("Tell me more")
+   
+   # Get complete history
+   history = chat.get_history()
+   
+   # Use with other features
+   from lexilux.chat import ChatHistoryFormatter
+   md = ChatHistoryFormatter.to_markdown(history)
+   
+   # Clear when needed
+   chat.clear_history()
+
+.. note::
+   For detailed guide on auto_history, see :doc:`auto_history`.
+
+**Continue Generation** (when response is cut off):
+
+.. code-block:: python
+
+   from lexilux import ChatContinue, ChatHistory
+
+   result = chat("Write a long story", max_tokens=100)
+   
+   if result.finish_reason == "length":
+       # Response was cut off, continue it
+       history = ChatHistory.from_chat_result("Write a long story", result)
+       continue_result = ChatContinue.continue_request(
+           chat, history, result, add_continue_prompt=True
+       )
+       # Merge results
+       full_result = ChatContinue.merge_results(result, continue_result)
+       print(full_result.text)  # Complete story
+
+.. note::
+   For detailed guide on continue functionality, see :doc:`chat_continue`.
+
+**Token Analysis** (comprehensive token statistics):
+
+.. code-block:: python
+
+   from lexilux import ChatHistory, Tokenizer, TokenAnalysis
+
+   tokenizer = Tokenizer("Qwen/Qwen2.5-7B-Instruct")
+   history = ChatHistory.from_messages("What is Python?")
+   history.add_assistant("Python is a programming language...")
+
+   # Comprehensive analysis
+   analysis = history.analyze_tokens(tokenizer)
+   print(f"Total: {analysis.total_tokens}")
+   print(f"User: {analysis.user_tokens}, Assistant: {analysis.assistant_tokens}")
+   
+   # Per-round breakdown
+   for idx, total, user, assistant in analysis.per_round:
+       print(f"Round {idx}: {total} tokens")
+
+.. note::
+   For detailed guide on token analysis, see :doc:`token_analysis`.
 
 Embedding
 ---------

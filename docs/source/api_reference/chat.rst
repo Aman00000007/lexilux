@@ -35,14 +35,21 @@ Parameter Configuration
    :members:
    :undoc-members:
    :show-inheritance:
+   :no-index:
 
 History Management
-~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~
 
 .. autoclass:: lexilux.chat.history.ChatHistory
    :members:
    :undoc-members:
    :show-inheritance:
+
+.. autoclass:: lexilux.chat.history.TokenAnalysis
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :no-index:
 
 Formatting
 ~~~~~~~~~~
@@ -61,6 +68,14 @@ Streaming
    :show-inheritance:
 
 .. autoclass:: lexilux.chat.streaming.StreamingIterator
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+Continue Functionality
+~~~~~~~~~~~~~~~~~~~~~~
+
+.. autoclass:: lexilux.chat.continue_.ChatContinue
    :members:
    :undoc-members:
    :show-inheritance:
@@ -87,6 +102,9 @@ See Also
 --------
 
 * :doc:`../chat_history` - Detailed guide on history management
+* :doc:`../auto_history` - Guide on automatic history management
 * :doc:`../chat_formatting` - Guide on formatting and export
 * :doc:`../chat_streaming` - Guide on streaming with accumulation
+* :doc:`../chat_continue` - Guide on continuing generation
+* :doc:`../token_analysis` - Guide on token analysis
 

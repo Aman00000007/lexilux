@@ -69,7 +69,6 @@ class TestChatContinueContinueRequest:
 
         history = ChatHistory.from_messages("Write a story")
         history.append_result(result1)
-        original_message_count = len(history.messages)
 
         mock_response = Mock()
         mock_response.status_code = 200
@@ -259,7 +258,9 @@ class TestChatContinueIntegration:
         mock_response = Mock()
         mock_response.status_code = 200
         mock_response.json.return_value = {
-            "choices": [{"message": {"content": " and here is the continuation"}, "finish_reason": "stop"}],
+            "choices": [
+                {"message": {"content": " and here is the continuation"}, "finish_reason": "stop"}
+            ],
             "usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30},
         }
         mock_response.raise_for_status = Mock()
@@ -276,4 +277,3 @@ class TestChatContinueIntegration:
         assert " and here is the continuation" in full_result.text
         assert full_result.usage.total_tokens == 90  # 60 + 30
         assert full_result.finish_reason == "stop"
-

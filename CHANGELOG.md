@@ -5,7 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.4.0] - 2026-01-XX
+## [0.5.0] - 2026-01-05
+
+### Added
+- Added `ChatHistory` class for comprehensive conversation history management
+  - Automatic extraction from messages or Chat results (no manual maintenance required)
+  - Support for `ChatHistory.from_messages()` and `ChatHistory.from_chat_result()` class methods
+  - Token counting and analysis with `analyze_tokens()`, `count_tokens()`, and `count_tokens_per_round()`
+  - Truncation by rounds with `truncate_by_rounds()` to fit context windows
+  - Serialization to/from JSON with `to_json()` and `from_json()` methods
+  - Round-based operations: `get_last_n_rounds()`, `remove_last_round()`, `update_last_assistant()`
+  - Multi-format export support (Markdown, HTML, Text, JSON)
+- Added `auto_history` feature to `Chat` class for automatic conversation tracking
+  - Enable with `Chat(..., auto_history=True)` for zero-maintenance history recording
+  - Automatically records all conversations (both streaming and non-streaming)
+  - Access recorded history with `chat.get_history()` method
+  - Clear history with `chat.clear_history()` method
+  - Works seamlessly with streaming responses, updating history in real-time
+- Added `ChatContinue` class for continuing cut-off responses
+  - `ChatContinue.continue_request()` method to continue generation when `finish_reason == "length"`
+  - Support for adding continue prompts (`add_continue_prompt=True`) or direct continuation (`add_continue_prompt=False`)
+  - Customizable continue prompt text via `continue_prompt` parameter
+  - `ChatContinue.merge_results()` method to merge multiple results into a single complete response
+  - Automatically merges text, usage statistics, and metadata from multiple continuation requests
+
+## [0.4.0] - 2026-01-05
 
 ### Added
 - Added `finish_reason` field to `ChatResult` and `ChatStreamChunk` to track why generation stopped

@@ -7,11 +7,7 @@ Tests challenge the business logic and verify correct behavior.
 
 from unittest.mock import Mock, patch
 
-import pytest
-
 from lexilux import Chat, ChatHistory, StreamingIterator
-from lexilux.chat.models import ChatResult
-from lexilux.usage import Usage
 
 
 class TestChatAutoHistoryInit:
@@ -66,7 +62,9 @@ class TestChatAutoHistoryNonStreaming:
         mock_response = Mock()
         mock_response.status_code = 200
         mock_response.json.return_value = {
-            "choices": [{"message": {"content": "Hello! How can I help?"}, "finish_reason": "stop"}],
+            "choices": [
+                {"message": {"content": "Hello! How can I help?"}, "finish_reason": "stop"}
+            ],
             "usage": {"prompt_tokens": 10, "completion_tokens": 8, "total_tokens": 18},
         }
         mock_response.raise_for_status = Mock()
@@ -97,7 +95,9 @@ class TestChatAutoHistoryNonStreaming:
         mock_response1 = Mock()
         mock_response1.status_code = 200
         mock_response1.json.return_value = {
-            "choices": [{"message": {"content": "Hello! How can I help?"}, "finish_reason": "stop"}],
+            "choices": [
+                {"message": {"content": "Hello! How can I help?"}, "finish_reason": "stop"}
+            ],
             "usage": {"prompt_tokens": 10, "completion_tokens": 8, "total_tokens": 18},
         }
         mock_response1.raise_for_status = Mock()
@@ -113,8 +113,8 @@ class TestChatAutoHistoryNonStreaming:
 
         mock_post.side_effect = [mock_response1, mock_response2]
 
-        result1 = chat("Hello")
-        result2 = chat("How are you?")
+        chat("Hello")
+        chat("How are you?")
 
         history = chat.get_history()
         assert history is not None
@@ -147,7 +147,7 @@ class TestChatAutoHistoryNonStreaming:
         mock_response.raise_for_status = Mock()
         mock_post.return_value = mock_response
 
-        result = chat("Hello", system="You are helpful")
+        chat("Hello", system="You are helpful")
         history = chat.get_history()
         assert history is not None
         assert history.system == "You are helpful"
@@ -171,7 +171,7 @@ class TestChatAutoHistoryNonStreaming:
         mock_response.raise_for_status = Mock()
         mock_post.return_value = mock_response
 
-        result = chat("Hello")
+        chat("Hello")
         history = chat.get_history()
         assert history is None  # Should not record when disabled
 
@@ -234,7 +234,9 @@ class TestChatAutoHistoryStreaming:
         assert history.messages[0]["content"] == "Hello"
         assert history.messages[1]["role"] == "assistant"
         # Assistant message should contain accumulated text
-        assert "Hello" in history.messages[1]["content"] or "world" in history.messages[1]["content"]
+        assert (
+            "Hello" in history.messages[1]["content"] or "world" in history.messages[1]["content"]
+        )
 
     @patch("lexilux.chat.client.requests.post")
     def test_auto_history_streaming_override_false(self, mock_post):
@@ -260,7 +262,7 @@ class TestChatAutoHistoryStreaming:
 
         # Override to False
         iterator = chat.stream("Hello", auto_history=False)
-        chunks = list(iterator)
+        list(iterator)
 
         # Should not record because override is False
         # Note: This tests the interface, actual behavior depends on implementation
@@ -290,7 +292,7 @@ class TestChatAutoHistoryStreaming:
 
         # Override to True
         iterator = chat.stream("Hello", auto_history=True)
-        chunks = list(iterator)
+        list(iterator)
 
         # Should record because override is True
         history = chat.get_history()
@@ -356,4 +358,3 @@ class TestChatWithHistory:
 
         chunks = list(iterator)
         assert len(chunks) >= 1
-

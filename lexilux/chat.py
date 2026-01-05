@@ -11,8 +11,8 @@ from typing import TYPE_CHECKING, Any, Iterator, Literal, Sequence, Union
 
 import requests
 
-from lexilux.chat_params import ChatParams
 from lexilux.chat.utils import normalize_messages
+from lexilux.chat_params import ChatParams
 from lexilux.usage import Json, ResultBase, Usage
 
 if TYPE_CHECKING:
@@ -56,7 +56,7 @@ class ChatResult(ResultBase):
         >>> print(result.finish_reason)
         "stop"
 
-        Handling network errors:
+        >>> # Handling network errors:
         >>> try:
         ...     result = chat("Hello")
         ...     print(f"Finished: {result.finish_reason}")
@@ -137,7 +137,7 @@ class ChatStreamChunk(ResultBase):
         ...         print(f"\\nUsage: {chunk.usage.total_tokens}")
         ...         print(f"Finish reason: {chunk.finish_reason}")
 
-        Handling network errors:
+        >>> # Handling network errors:
         >>> try:
         ...     for chunk in chat.stream("Hello"):
         ...         print(chunk.delta, end="")

@@ -21,8 +21,8 @@ class EmbedParams:
 
     Attributes:
         dimensions: The number of dimensions the resulting output embeddings
-            should have. Only supported in some models (e.g., text-embedding-3-*).
-            For example, text-embedding-3-large can output embeddings with
+            should have. Only supported in some models (e.g., ``text-embedding-3-*``).
+            For example, ``text-embedding-3-large`` can output embeddings with
             dimensions from 256 up to 3072.
             Default: None (use model's default)
 

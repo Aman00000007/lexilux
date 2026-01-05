@@ -115,7 +115,7 @@ def demo_file_saving():
 
     # Build conversation
     result = chat("Explain decorators in Python", system="You are a helpful assistant")
-    history = ChatHistory.from_chat_result("Explain decorators in Python", result)
+    ChatHistory.from_chat_result("Explain decorators in Python", result)
 
     # Save in different formats (commented out to avoid creating files in demo)
     print("\n1. Save as Markdown:")
@@ -161,4 +161,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

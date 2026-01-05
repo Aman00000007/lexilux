@@ -320,9 +320,7 @@ class ChatHistory:
             total += result.usage.total_tokens or 0
         return total
 
-    def count_tokens_per_round(
-        self, tokenizer: Tokenizer
-    ) -> list[tuple[int, int]]:
+    def count_tokens_per_round(self, tokenizer: Tokenizer) -> list[tuple[int, int]]:
         """
         Count tokens per round.
 
@@ -502,9 +500,7 @@ class ChatHistory:
             round_tokens_list.append(round_total)
 
         # Calculate statistics
-        avg_per_message = (
-            total_tokens / len(messages) if messages else 0.0
-        )
+        avg_per_message = total_tokens / len(messages) if messages else 0.0
         avg_per_round = (
             sum(round_tokens_list) / len(round_tokens_list) if round_tokens_list else 0.0
         )
@@ -738,9 +734,7 @@ def search_content(history: ChatHistory, pattern: str) -> list[dict[str, str]]:
     return results
 
 
-def get_statistics(
-    history: ChatHistory, tokenizer: "Tokenizer" | None = None
-) -> dict[str, Any]:
+def get_statistics(history: ChatHistory, tokenizer: Tokenizer | None = None) -> dict[str, Any]:
     """
     Get comprehensive statistics about the conversation history.
 

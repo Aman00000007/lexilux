@@ -159,7 +159,7 @@ class Embed:
             input: Single text string or sequence of text strings.
             model: Model to use (overrides default).
             dimensions: Number of dimensions for output embeddings. Only supported
-                in some models (e.g., text-embedding-3-*). Default: None (use model default)
+                in some models (e.g., ``text-embedding-3-*``). Default: None (use model default)
             encoding_format: Format to return embeddings. "float" (default) or "base64".
                 Some providers may support additional formats.
             user: Unique identifier for end-user (for monitoring/rate limiting).

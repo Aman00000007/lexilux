@@ -535,7 +535,9 @@ class Chat:
         # If auto_history, wrap iterator to update history
         use_auto_history = auto_history if auto_history is not None else self.auto_history
         if use_auto_history:
-            streaming_iterator = self._wrap_streaming_with_history(streaming_iterator, normalized_messages)
+            streaming_iterator = self._wrap_streaming_with_history(
+                streaming_iterator, normalized_messages
+            )
 
         return streaming_iterator
 

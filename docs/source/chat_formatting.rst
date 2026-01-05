@@ -1,5 +1,5 @@
 Chat History Formatting
-======================
+=======================
 
 Lexilux provides comprehensive formatting and export capabilities for conversation history
 in multiple formats: Markdown, HTML, plain text, and JSON.

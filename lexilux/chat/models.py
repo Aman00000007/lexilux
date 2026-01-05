@@ -48,7 +48,7 @@ class ChatResult(ResultBase):
         >>> print(result.finish_reason)
         "stop"
 
-        Handling network errors:
+        >>> # Handling network errors:
         >>> try:
         ...     result = chat("Hello")
         ...     print(f"Finished: {result.finish_reason}")
@@ -120,7 +120,6 @@ class ChatStreamChunk(ResultBase):
           * Network error: Exception is raised, no done=True chunk received
           * Normal completion: done=True chunk received with finish_reason set
           * Incomplete stream: Exception raised after receiving some chunks
-            (check if any chunk has done=True to determine if completion occurred)
 
     Examples:
         >>> for chunk in chat.stream("Hello"):
@@ -129,15 +128,14 @@ class ChatStreamChunk(ResultBase):
         ...         print(f"\\nUsage: {chunk.usage.total_tokens}")
         ...         print(f"Finish reason: {chunk.finish_reason}")
 
-        Handling network errors:
+        >>> # Handling network errors:
         >>> try:
-        ...     for chunk in chat.stream("Hello"):
-        ...         print(chunk.delta, end="")
+        ...     iterator = chat.stream("Hello")
+        ...     for chunk in iterator:
         ...         if chunk.done:
-        ...             print(f"\\nFinished: {chunk.finish_reason}")
+        ...             break
         ... except requests.RequestException as e:
         ...     print(f"\\nNetwork error: {e}")
-        ...     # No finish_reason available - connection was interrupted
     """
 
     def __init__(
