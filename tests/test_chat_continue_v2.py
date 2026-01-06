@@ -177,7 +177,9 @@ class TestChatContinueContinueRequest:
         mock_post.return_value = mock_response
 
         # Continue with auto_merge=False
-        all_results = ChatContinue.continue_request(chat, result1, history=history, auto_merge=False)
+        all_results = ChatContinue.continue_request(
+            chat, result1, history=history, auto_merge=False
+        )
 
         # Should return list
         assert isinstance(all_results, list)
@@ -423,4 +425,3 @@ class TestChatContinueMergeResults:
         """Test that merge_results raises when no results provided"""
         with pytest.raises(ValueError, match="At least one result is required"):
             ChatContinue.merge_results()
-

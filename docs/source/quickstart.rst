@@ -73,37 +73,47 @@ Streaming with ChatParams:
    for chunk in chat.stream("Write a short story", params=params):
        print(chunk.delta, end="")
 
-Chat History Management
------------------------
+Chat History Management (v2.0)
+-------------------------------
 
-Lexilux provides powerful conversation history management with automatic extraction,
-serialization, and formatting capabilities.
+Lexilux v2.0 provides explicit history management - you create and manage history objects yourself.
 
-**Automatic History Extraction** (Recommended):
+**Explicit History Management** (v2.0):
 
 .. code-block:: python
 
-   from lexilux import Chat, ChatResult
-   from lexilux.chat import ChatHistory
+   from lexilux import Chat, ChatHistory
 
    chat = Chat(base_url="https://api.example.com/v1", api_key="key", model="gpt-4")
 
-   # Extract history from any Chat call - no manual maintenance needed!
-   result = chat("What is Python?")
-   history = ChatHistory.from_chat_result("What is Python?", result)
+   # Create history explicitly
+   history = ChatHistory()
+   
+   # Pass history explicitly - it's automatically updated
+   result1 = chat("What is Python?", history=history)
+   result2 = chat("Tell me more", history=history)
+   
+   # History now contains both turns
+   print(f"Total messages: {len(history.messages)}")  # 4 messages
 
-   # Continue conversation
-   result2 = chat(history.get_messages() + [{"role": "user", "content": "Tell me more"}])
-   history = ChatHistory.from_chat_result(history.get_messages() + [...], result2)
-
-**Manual History Construction** (Optional):
+**History as MutableSequence** (v2.0):
 
 .. code-block:: python
 
-   history = ChatHistory(system="You are a helpful assistant")
-   history.add_user("What is Python?")
-   result = chat(history.get_messages())
-   history.append_result(result)
+   history = ChatHistory()
+   history.add_user("Hello")
+   history.add_assistant("Hi!")
+   
+   # Array-like operations
+   assert len(history) == 2
+   assert history[0]["role"] == "user"
+   
+   # Slicing (returns new ChatHistory)
+   first_turn = history[:1]
+   
+   # Iteration
+   for msg in history:
+       print(f"{msg['role']}: {msg['content']}")
 
 **History Serialization**:
 
@@ -141,44 +151,24 @@ serialization, and formatting capabilities.
    ChatHistoryFormatter.save(history, "conversation.html", theme="minimal")
    ChatHistoryFormatter.save(history, "conversation.txt", width=100)
 
-**Streaming with History Accumulation**:
+**Streaming with History**:
 
 .. code-block:: python
 
-   # chat.stream() now returns StreamingIterator automatically
-   iterator = chat.stream("Tell me a story")
+   history = ChatHistory()
+   
+   # Pass history to stream - it's updated automatically
+   iterator = chat.stream("Tell me a story", history=history)
    for chunk in iterator:
        print(chunk.delta, end="")
        # Access accumulated text at any time
        current_text = iterator.result.text
 
-   # After streaming, convert to ChatResult and add to history
-   result = iterator.result.to_chat_result()
-   history.append_result(result)
-
-**Automatic History (Recommended for Simplicity)**:
-
-.. code-block:: python
-
-   # Enable auto_history - simplest way to manage conversations
-   chat = Chat(..., auto_history=True)
-   
-   # Just chat - history is automatically recorded
-   chat("What is Python?")
-   chat("Tell me more")
-   
-   # Get complete history
-   history = chat.get_history()
-   
-   # Use with other features
-   from lexilux.chat import ChatHistoryFormatter
-   md = ChatHistoryFormatter.to_markdown(history)
-   
-   # Clear when needed
-   chat.clear_history()
+   # History is automatically updated with full response
+   assert len(history.messages) == 2  # user + assistant
 
 .. note::
-   For detailed guide on auto_history, see :doc:`auto_history`.
+   For detailed guide on history management, see :doc:`chat_history`.
 
 **Continue Generation** (when response is cut off):
 
@@ -186,38 +176,40 @@ Recommended approach - use ``chat.complete()``:
 
 .. code-block:: python
 
-   from lexilux import Chat
+   from lexilux import Chat, ChatHistory
    import json
 
-   chat = Chat(..., auto_history=True)
+   chat = Chat(...)
+   history = ChatHistory()
 
    # Automatically handles truncation, returns complete result
-   result = chat.complete("Write a long JSON response", max_tokens=100)
+   result = chat.complete("Write a long JSON response", history=history, max_tokens=100)
    json_data = json.loads(result.text)  # Guaranteed complete
 
 Conditional continue:
 
 .. code-block:: python
 
-   chat = Chat(..., auto_history=True)
-
-   result = chat("Long story", max_tokens=50)
-   # Only continues if truncated
-   full_result = chat.continue_if_needed(result, max_continues=3)
+   history = ChatHistory()
+   result = chat("Long story", history=history, max_tokens=50)
+   
+   # Only continues if truncated (requires explicit history)
+   full_result = chat.continue_if_needed(result, history=history, max_continues=3)
 
 Advanced control:
 
 .. code-block:: python
 
-   from lexilux import ChatContinue
+   from lexilux import Chat, ChatHistory, ChatContinue
 
-   chat = Chat(..., auto_history=True)
-   result = chat("Story", max_tokens=50)
+   chat = Chat(...)
+   history = ChatHistory()
+   result = chat("Story", history=history, max_tokens=50)
    
    if result.finish_reason == "length":
-       # Automatic history retrieval, multiple continues, auto merge
+       # Explicit history required, multiple continues, auto merge
        full_result = ChatContinue.continue_request(
-           chat, result, max_continues=3
+           chat, result, history=history, max_continues=3
        )
 
 .. note::

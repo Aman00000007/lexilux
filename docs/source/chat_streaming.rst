@@ -102,56 +102,58 @@ When using ``StreamingIterator``, you can access the accumulated result at any p
    assert iterator.result.done is True
    assert len(iterator.result.text) > 0
 
-Integration with History
-------------------------
+Integration with History (v2.0)
+--------------------------------
 
-Convert to ChatResult
-~~~~~~~~~~~~~~~~~~~~~
+Automatic History Updates
+~~~~~~~~~~~~~~~~~~~~~~~~~
 
-After streaming, convert the accumulated result to ``ChatResult`` for history management:
+In v2.0, pass history explicitly and it's automatically updated:
 
 .. code-block:: python
 
-   from lexilux.chat import ChatHistory
+   from lexilux import Chat, ChatHistory
 
-   # chat.stream() returns StreamingIterator automatically
-   iterator = chat.stream("Tell me a story")
+   chat = Chat(...)
+   history = ChatHistory()
+
+   # Pass history explicitly - it's automatically updated
+   iterator = chat.stream("Tell me a story", history=history)
    for chunk in iterator:
        print(chunk.delta, end="")
 
-   # Convert to ChatResult
-   result = iterator.result.to_chat_result()
-
-   # Add to history
-   history = ChatHistory()
-   history.add_user("Tell me a story")
-   history.append_result(result)
+   # History is automatically updated with user message and assistant response
+   assert len(history.messages) == 2
+   assert history.messages[0]["role"] == "user"
+   assert history.messages[1]["role"] == "assistant"
+   assert history.messages[1]["content"] == iterator.result.text
 
 Real-time History Updates
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-You can update history in real-time during streaming:
+History is updated in real-time during streaming:
 
 .. code-block:: python
 
-   from lexilux.chat import ChatHistory
+   from lexilux import Chat, ChatHistory
 
    history = ChatHistory()
-   history.add_user("Tell me a story")
 
-   # chat.stream() returns StreamingIterator automatically
-   iterator = chat.stream(history.get_messages())
+   # Pass history to stream - it's updated automatically
+   iterator = chat.stream("Tell me a story", history=history)
+   
    for chunk in iterator:
        print(chunk.delta, end="")
-       # Update history with current accumulated text
-       history.update_last_assistant(iterator.result.text)
+       # History is being updated in real-time
+       # Assistant message content is updated on each chunk
 
-   # After streaming, history already contains the complete response
+   # After streaming, history contains complete response
+   assert history.messages[1]["content"] == iterator.result.text
 
 .. note::
-   This approach updates history in real-time, but be aware that it may
-   cause multiple updates. For better performance, update only at the end
-   or at intervals.
+   In v2.0, history is updated automatically when you pass it to ``stream()``.
+   The user message is added before the request, and the assistant message
+   is added and updated during streaming.
 
 Handling Interruptions
 ----------------------
@@ -332,25 +334,24 @@ Complete Streaming Workflow
        # Export conversation
        ChatHistoryFormatter.save(history, "story.md")
 
-Streaming with Auto History
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Streaming with History (v2.0)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: python
 
-   from lexilux import Chat
+   from lexilux import Chat, ChatHistory
 
-   # Enable auto_history for automatic recording
-   chat = Chat(..., auto_history=True)
+   chat = Chat(...)
+   history = ChatHistory()
 
-   # Stream - history is automatically updated
-   iterator = chat.stream("Tell me a story")
+   # Pass history explicitly - it's automatically updated
+   iterator = chat.stream("Tell me a story", history=history)
    for chunk in iterator:
        print(chunk.delta, end="")
 
    # History already contains complete conversation
-   history = chat.get_history()
    assert len(history.messages) == 2  # user + assistant
-   assert len(history.messages[1]["content"]) > 0
+   assert len(history.messages[1]["content"]) == len(iterator.result.text)
 
 Progress Monitoring
 ~~~~~~~~~~~~~~~~~~~

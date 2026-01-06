@@ -6,10 +6,7 @@ Tests real-world usage scenarios with explicit history management.
 
 from unittest.mock import Mock, patch
 
-import pytest
-
-from lexilux import Chat, ChatContinue, ChatHistory, ChatResult
-from lexilux.usage import Usage
+from lexilux import Chat, ChatHistory
 
 
 class TestChatV2Integration:
@@ -28,7 +25,9 @@ class TestChatV2Integration:
         mock_response1 = Mock()
         mock_response1.status_code = 200
         mock_response1.json.return_value = {
-            "choices": [{"message": {"content": "Hello! How can I help?"}, "finish_reason": "stop"}],
+            "choices": [
+                {"message": {"content": "Hello! How can I help?"}, "finish_reason": "stop"}
+            ],
             "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
         }
         mock_response1.raise_for_status = Mock()
@@ -37,7 +36,12 @@ class TestChatV2Integration:
         mock_response2 = Mock()
         mock_response2.status_code = 200
         mock_response2.json.return_value = {
-            "choices": [{"message": {"content": "Python is a programming language."}, "finish_reason": "stop"}],
+            "choices": [
+                {
+                    "message": {"content": "Python is a programming language."},
+                    "finish_reason": "stop",
+                }
+            ],
             "usage": {"prompt_tokens": 20, "completion_tokens": 8, "total_tokens": 28},
         }
         mock_response2.raise_for_status = Mock()
@@ -62,7 +66,9 @@ class TestChatV2Integration:
         # so at request time, history has: Hello + response + What is Python?)
         second_call_payload = mock_post.call_args_list[1].kwargs["json"]
         messages = second_call_payload["messages"]
-        assert len(messages) == 3  # Hello + response + What is Python? (assistant response added after)
+        assert (
+            len(messages) == 3
+        )  # Hello + response + What is Python? (assistant response added after)
         assert messages[0]["content"] == "Hello"
         assert messages[1]["content"] == "Hello! How can I help?"
         assert messages[2]["content"] == "What is Python?"
@@ -92,7 +98,7 @@ class TestChatV2Integration:
 
         history = ChatHistory()
         iterator = chat.stream("Say hello", history=history)
-        chunks = list(iterator)
+        list(iterator)
 
         # History should be updated
         assert len(history.messages) == 2
@@ -388,4 +394,3 @@ class TestChatV2Integration:
 
         last_user_message = history.get_last_user_message()
         assert last_user_message == "How are you?"
-

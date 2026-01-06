@@ -302,7 +302,9 @@ class ChatHistory(MutableSequence):
             IndexError: If index is out of range.
         """
         if not (0 <= index < len(self.messages)):
-            raise IndexError(f"Index {index} out of range for history with {len(self.messages)} messages")
+            raise IndexError(
+                f"Index {index} out of range for history with {len(self.messages)} messages"
+            )
         self.messages[index] = {"role": role, "content": content}
 
     def get_user_messages(self) -> list[str]:
@@ -770,7 +772,9 @@ class ChatHistory(MutableSequence):
         else:
             raise TypeError(f"Invalid key type: {type(key)}")
 
-    def __setitem__(self, key: int | slice, value: dict[str, str] | Sequence[dict[str, str]]) -> None:
+    def __setitem__(
+        self, key: int | slice, value: dict[str, str] | Sequence[dict[str, str]]
+    ) -> None:
         """
         Set message(s) by index or slice.
 

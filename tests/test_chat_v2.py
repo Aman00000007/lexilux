@@ -16,7 +16,7 @@ from unittest.mock import Mock, patch
 import pytest
 import requests
 
-from lexilux import Chat, ChatContinue, ChatHistory, ChatResult
+from lexilux import Chat, ChatHistory, ChatResult
 from lexilux.chat.exceptions import ChatIncompleteResponseError
 from lexilux.usage import Usage
 
@@ -203,7 +203,7 @@ class TestChatWithExplicitHistory:
         iterator = chat.stream("Hello", history=history)
 
         # Iterate all chunks
-        chunks = list(iterator)
+        list(iterator)
 
         # History should be updated
         assert len(history.messages) == 2
@@ -399,7 +399,9 @@ class TestChatComplete:
         history = ChatHistory()
         # Should raise ChatIncompleteResponseError after max_continues
         with pytest.raises(ChatIncompleteResponseError) as exc_info:
-            chat.complete("Write a very long story", history=history, max_tokens=10, max_continues=2)
+            chat.complete(
+                "Write a very long story", history=history, max_tokens=10, max_continues=2
+            )
 
         assert exc_info.value.continue_count == 2
         assert exc_info.value.max_continues == 2
@@ -545,4 +547,3 @@ class TestChatStreamingContinue:
         assert result.finish_reason == "stop"
         assert "Part 1" in result.text
         assert "Part 2" in result.text
-

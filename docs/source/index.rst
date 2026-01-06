@@ -54,7 +54,6 @@ Lexilux is a unified LLM API client library that makes calling Chat, Embedding, 
    recommended_workflows
    error_handling
    chat_history
-   auto_history
    chat_formatting
    chat_streaming
    chat_continue

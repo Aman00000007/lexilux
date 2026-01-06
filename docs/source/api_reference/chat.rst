@@ -101,10 +101,9 @@ Type Aliases
 See Also
 --------
 
-* :doc:`../chat_history` - Detailed guide on history management
-* :doc:`../auto_history` - Guide on automatic history management
+* :doc:`../chat_history` - Detailed guide on history management (v2.0)
 * :doc:`../chat_formatting` - Guide on formatting and export
 * :doc:`../chat_streaming` - Guide on streaming with accumulation
-* :doc:`../chat_continue` - Guide on continuing generation
+* :doc:`../chat_continue` - Guide on continuing generation (v2.0)
 * :doc:`../token_analysis` - Guide on token analysis
 

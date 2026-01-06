@@ -438,4 +438,3 @@ class TestChatHistoryExistingMethods:
         assert len(history) == 2
         assert history[1]["role"] == "assistant"
         assert history[1]["content"] == "Hi!"
-

@@ -1,88 +1,58 @@
-Chat History Management
-========================
+Chat History Management (v2.0)
+===============================
 
-Lexilux provides comprehensive conversation history management with automatic extraction,
-serialization, token counting, truncation, and multi-format export capabilities.
+Lexilux v2.0 provides comprehensive conversation history management with **explicit history control**.
+All history management is now explicit - you create and manage `ChatHistory` objects yourself.
 
 Overview
 --------
 
-The ``ChatHistory`` class eliminates the need for manual history maintenance by providing:
+The ``ChatHistory`` class provides:
 
-* **Automatic extraction** from any Chat call or message list
-* **Automatic history management** via ``auto_history`` feature (see :doc:`auto_history`)
+* **Explicit History Management**: You create and pass history objects explicitly
+* **MutableSequence Protocol**: Array-like operations (indexing, slicing, iteration)
 * **Serialization** to/from JSON for persistence
 * **Token counting and truncation** for context window management
 * **Round-based operations** for conversation management
 * **Multi-format export** (Markdown, HTML, Text, JSON)
+* **Query and modification methods** for flexible history manipulation
 
 Key Features
 ------------
 
-1. **Zero Maintenance**: Extract history from any Chat call automatically, or use ``auto_history=True`` for automatic recording
-2. **Flexible Input**: Supports all message formats (string, list of strings, list of dicts)
-3. **Serialization**: Save and load conversations as JSON
-4. **Token Management**: Count tokens and truncate by rounds to fit context windows
-5. **Format Export**: Export to Markdown, HTML, Text, or JSON formats
-6. **Automatic History**: Use ``Chat(..., auto_history=True)`` for zero-maintenance conversation tracking
+1. **Explicit Control**: You manage history objects explicitly - no hidden state
+2. **Array-like Operations**: Use indexing, slicing, iteration like a list
+3. **Flexible Input**: Supports all message formats (string, list of strings, list of dicts)
+4. **Serialization**: Save and load conversations as JSON
+5. **Token Management**: Count tokens and truncate by rounds to fit context windows
+6. **Format Export**: Export to Markdown, HTML, Text, or JSON formats
 
 Basic Usage
 -----------
 
-Automatic History (Simplest - Recommended)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Creating and Using History
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The simplest way is to use ``auto_history=True`` when creating the Chat client.
-This automatically records all conversations with zero maintenance:
-
-.. code-block:: python
-
-   from lexilux import Chat
-
-   # Enable auto_history - simplest approach
-   chat = Chat(..., auto_history=True)
-
-   # Just chat - history is automatically recorded
-   result1 = chat("What is Python?")
-   result2 = chat("Tell me more")
-
-   # Get complete history at any time
-   history = chat.get_history()
-   print(f"Total messages: {len(history.messages)}")
-
-   # Clear when starting new topic
-   chat.clear_history()
-
-For detailed guide on auto_history, see :doc:`auto_history`.
-
-Automatic Extraction (Alternative)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Alternatively, you can extract history from Chat calls manually:
+In v2.0, you explicitly create and pass history objects:
 
 .. code-block:: python
 
-   from lexilux import Chat
-   from lexilux.chat import ChatHistory
+   from lexilux import Chat, ChatHistory
 
    chat = Chat(base_url="https://api.example.com/v1", api_key="key", model="gpt-4")
-
-   # Extract history from a Chat call - no manual maintenance!
-   result = chat("What is Python?")
-   history = ChatHistory.from_chat_result("What is Python?", result)
-
-   # Continue the conversation
-   result2 = chat(history.get_messages() + [{"role": "user", "content": "Tell me more"}])
-   history = ChatHistory.from_chat_result(
-       history.get_messages() + [{"role": "user", "content": "Tell me more"}],
-       result2
-   )
-
-   # Now history contains the complete conversation
-
-.. note::
-   This approach requires no manual history maintenance. Simply extract history
-   from each Chat call, and the conversation is automatically tracked.
+   
+   # Create history explicitly
+   history = ChatHistory()
+   
+   # First turn - pass history explicitly
+   result1 = chat("What is Python?", history=history)
+   # History is automatically updated with user message and assistant response
+   
+   # Second turn - same history object
+   result2 = chat("Tell me more", history=history)
+   # History now contains both turns
+   
+   print(f"Total messages: {len(history.messages)}")  # 4 messages
 
 From Messages
 ~~~~~~~~~~~~~
@@ -119,16 +89,238 @@ For more control, you can manually construct and manage history:
    # Add user message
    history.add_user("What is Python?")
 
-   # Call API
-   result = chat(history.get_messages())
+   # Call API with history
+   result = chat(history.get_messages(), history=history)
 
-   # Add assistant response
-   history.append_result(result)
+   # Assistant response is automatically added to history
+   # Or manually add:
+   # history.append_result(result)
 
    # Continue conversation
    history.add_user("Tell me more")
-   result2 = chat(history.get_messages())
-   history.append_result(result2)
+   result2 = chat(history.get_messages(), history=history)
+
+MutableSequence Operations
+---------------------------
+
+ChatHistory implements the ``MutableSequence`` protocol, allowing array-like operations:
+
+Indexing
+~~~~~~~~
+
+.. code-block:: python
+
+   history = ChatHistory()
+   history.add_user("Hello")
+   history.add_assistant("Hi!")
+   
+   # Get message by index
+   first_msg = history[0]
+   assert first_msg["role"] == "user"
+   
+   # Set message by index
+   history[0] = {"role": "user", "content": "Updated"}
+
+Slicing
+~~~~~~~
+
+.. code-block:: python
+
+   history = ChatHistory()
+   history.add_user("Hello")
+   history.add_assistant("Hi!")
+   history.add_user("How are you?")
+   history.add_assistant("I'm fine")
+   
+   # Get first 2 messages (returns new ChatHistory)
+   first_turn = history[:2]
+   assert isinstance(first_turn, ChatHistory)
+   assert len(first_turn) == 2
+   
+   # Get last 2 messages
+   last_turn = history[-2:]
+   assert len(last_turn) == 2
+
+Iteration
+~~~~~~~~~
+
+.. code-block:: python
+
+   history = ChatHistory()
+   history.add_user("Hello")
+   history.add_assistant("Hi!")
+   
+   # Iterate over messages
+   for msg in history:
+       print(f"{msg['role']}: {msg['content']}")
+   
+   # Convert to list
+   messages = list(history)
+
+Length and Membership
+~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: python
+
+   history = ChatHistory()
+   history.add_user("Hello")
+   history.add_assistant("Hi!")
+   
+   # Length
+   assert len(history) == 2
+   
+   # Membership
+   assert history[0] in history
+
+Modification Operations
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: python
+
+   history = ChatHistory()
+   history.add_user("Hello")
+   history.add_assistant("Hi!")
+   
+   # Insert message
+   history.insert(0, {"role": "system", "content": "You are helpful"})
+   
+   # Delete message
+   del history[0]
+   
+   # Replace slice
+   history[:2] = [
+       {"role": "user", "content": "New 1"},
+       {"role": "assistant", "content": "New 2"},
+   ]
+
+Query Methods
+-------------
+
+Get User/Assistant Messages
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: python
+
+   history = ChatHistory()
+   history.add_user("Hello")
+   history.add_assistant("Hi!")
+   history.add_user("How are you?")
+   history.add_assistant("I'm fine")
+   
+   # Get all user messages
+   user_msgs = history.get_user_messages()
+   assert user_msgs == ["Hello", "How are you?"]
+   
+   # Get all assistant messages
+   assistant_msgs = history.get_assistant_messages()
+   assert assistant_msgs == ["Hi!", "I'm fine"]
+
+Get Last Message
+~~~~~~~~~~~~~~~~
+
+.. code-block:: python
+
+   history = ChatHistory()
+   history.add_user("Hello")
+   history.add_assistant("Hi!")
+   
+   # Get last message
+   last = history.get_last_message()
+   assert last["content"] == "Hi!"
+   
+   # Get last user message
+   last_user = history.get_last_user_message()
+   assert last_user == "Hello"
+
+Modification Methods
+---------------------
+
+Remove Operations
+~~~~~~~~~~~~~~~~~
+
+.. code-block:: python
+
+   history = ChatHistory()
+   history.add_user("Hello")
+   history.add_assistant("Hi!")
+   history.add_user("How are you?")
+   
+   # Remove last message
+   removed = history.remove_last()
+   assert removed["content"] == "How are you?"
+   
+   # Remove at specific index
+   removed = history.remove_at(1)
+   assert removed["content"] == "Hi!"
+
+Replace Operations
+~~~~~~~~~~~~~~~~~~
+
+.. code-block:: python
+
+   history = ChatHistory()
+   history.add_user("Hello")
+   history.add_assistant("Hi!")
+   
+   # Replace at index
+   history.replace_at(0, "user", "Updated")
+   assert history[0]["content"] == "Updated"
+
+System Message
+~~~~~~~~~~~~~~
+
+.. code-block:: python
+
+   history = ChatHistory()
+   
+   # Add or update system message
+   history.add_system("You are helpful")
+   assert history.system == "You are helpful"
+   
+   # Update system message
+   history.add_system("You are very helpful")
+   assert history.system == "You are very helpful"
+
+Clone and Merge
+---------------
+
+Clone History
+~~~~~~~~~~~~~
+
+.. code-block:: python
+
+   history = ChatHistory(system="You are helpful")
+   history.add_user("Hello")
+   history.add_assistant("Hi!")
+   
+   # Clone creates deep copy
+   cloned = history.clone()
+   assert cloned is not history
+   assert cloned.messages is not history.messages
+   
+   # Modifying clone doesn't affect original
+   cloned.add_user("New message")
+   assert len(cloned) == 3
+   assert len(history) == 2
+
+Merge Histories
+~~~~~~~~~~~~~~~
+
+.. code-block:: python
+
+   history1 = ChatHistory(system="You are helpful")
+   history1.add_user("Hello")
+   history1.add_assistant("Hi!")
+   
+   history2 = ChatHistory()
+   history2.add_user("How are you?")
+   history2.add_assistant("I'm fine")
+   
+   # Merge histories
+   combined = history1 + history2
+   assert isinstance(combined, ChatHistory)
+   assert len(combined) == 4
+   assert combined.system == "You are helpful"  # From first history
 
 Serialization
 -------------
@@ -299,13 +491,32 @@ Truncate history to fit within a token limit, keeping the most recent rounds:
 Best Practices
 --------------
 
-1. **Use Auto History When Possible**: For simplest usage, use ``Chat(..., auto_history=True)``.
-   This eliminates all manual history management. See :doc:`auto_history` for details.
+1. **Explicit History Management**: Always create and pass history objects explicitly.
+   This gives you full control over when and how history is used.
 
-2. **Use Automatic Extraction**: If not using auto_history, prefer ``ChatHistory.from_chat_result()`` over
-   manual construction. It's simpler and less error-prone.
+2. **Use Same History Object**: For a conversation session, use the same history object
+   across all calls:
 
-3. **Serialize Regularly**: Save important conversations to JSON for persistence:
+   .. code-block:: python
+
+      history = ChatHistory()
+      result1 = chat("Hello", history=history)
+      result2 = chat("How are you?", history=history)
+      # Both calls update the same history object
+
+3. **Multiple Independent Histories**: You can use multiple history objects for different
+   conversations:
+
+   .. code-block:: python
+
+      history1 = ChatHistory()
+      history2 = ChatHistory()
+      
+      chat("Hello", history=history1)
+      chat("Hi", history=history2)
+      # Two independent conversations
+
+4. **Serialize Regularly**: Save important conversations to JSON for persistence:
 
    .. code-block:: python
 
@@ -313,7 +524,7 @@ Best Practices
       with open(f"conversation_{timestamp}.json", "w") as f:
           f.write(history.to_json())
 
-4. **Manage Context Windows**: Use token counting and truncation before long conversations:
+5. **Manage Context Windows**: Use token counting and truncation before long conversations:
 
    .. code-block:: python
 
@@ -321,10 +532,10 @@ Best Practices
       if history.count_tokens(tokenizer) > max_context:
           history = history.truncate_by_rounds(tokenizer, max_tokens=max_context)
 
-5. **Handle Incomplete Rounds**: Be aware that incomplete rounds (user message without
+6. **Handle Incomplete Rounds**: Be aware that incomplete rounds (user message without
    assistant response) are preserved. Use ``remove_last_round()`` if needed.
 
-6. **Use Token Analysis for Insights**: Use ``analyze_tokens()`` to understand token distribution
+7. **Use Token Analysis for Insights**: Use ``analyze_tokens()`` to understand token distribution
    and identify optimization opportunities:
 
    .. code-block:: python
@@ -346,7 +557,18 @@ Best Practices
 Common Pitfalls
 ---------------
 
-1. **Forgetting to Assign Truncated History**:
+1. **Forgetting to Pass History**: In v2.0, history must be passed explicitly:
+
+   .. code-block:: python
+
+      # Wrong - history=None, no history tracking
+      result = chat("Hello")
+      
+      # Correct - pass history explicitly
+      history = ChatHistory()
+      result = chat("Hello", history=history)
+
+2. **Forgetting to Assign Truncated History**:
    ``truncate_by_rounds()`` returns a new instance. Don't forget to assign it:
 
    .. code-block:: python
@@ -358,7 +580,7 @@ Common Pitfalls
       # Correct
       history = history.truncate_by_rounds(tokenizer, max_tokens=4000)
 
-2. **Multiple System Messages**: If your messages contain multiple system messages,
+3. **Multiple System Messages**: If your messages contain multiple system messages,
    only the first one is extracted to ``history.system``. The rest remain in messages:
 
    .. code-block:: python
@@ -372,7 +594,7 @@ Common Pitfalls
       # history.system == "System 1"
       # history.messages[0] == {"role": "system", "content": "System 2"}
 
-3. **Incomplete Rounds**: When removing or truncating, incomplete rounds (user without
+4. **Incomplete Rounds**: When removing or truncating, incomplete rounds (user without
    assistant) are treated as valid rounds. Check for completion if needed:
 
    .. code-block:: python
@@ -383,37 +605,27 @@ Common Pitfalls
           # Incomplete round
           history.remove_last_round()
 
-4. **Token Counting Performance**: Token counting can be slow for long histories.
+5. **Token Counting Performance**: Token counting can be slow for long histories.
    Consider caching results or only counting when necessary.
 
-5. **Using Auto History Incorrectly**: Remember that ``auto_history=True`` must be set
-   when creating the Chat client. It defaults to ``False``:
+6. **Using Different History Objects**: Each history object is independent. Make sure
+   to use the same history object for a conversation session:
 
    .. code-block:: python
 
-      # Wrong - auto_history defaults to False
-      chat = Chat(...)
-      chat("Hello")
-      history = chat.get_history()  # Returns None!
-
-      # Correct - explicitly enable
-      chat = Chat(..., auto_history=True)
-      chat("Hello")
-      history = chat.get_history()  # Returns ChatHistory
-
-6. **Not Clearing History Between Sessions**: When using auto_history, remember to
-   clear history when starting new conversation topics:
-
-   .. code-block:: python
-
-      chat = Chat(..., auto_history=True)
+      # Wrong - different history objects
+      history1 = ChatHistory()
+      result1 = chat("Hello", history=history1)
       
-      # Session 1
-      chat("What is Python?")
+      history2 = ChatHistory()
+      result2 = chat("How are you?", history=history2)
+      # history2 doesn't contain "Hello"
       
-      # Session 2 - should clear first
-      chat.clear_history()
-      chat("What is JavaScript?")
+      # Correct - same history object
+      history = ChatHistory()
+      result1 = chat("Hello", history=history)
+      result2 = chat("How are you?", history=history)
+      # history contains both turns
 
 Utility Functions
 -----------------
@@ -488,7 +700,7 @@ Search for messages containing specific text:
    # Useful for finding specific topics in long conversations
 
 Get Statistics
-~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~
 
 Get comprehensive statistics about the conversation:
 
@@ -539,4 +751,3 @@ Get comprehensive statistics about the conversation:
       # Correct - pass tokenizer for token statistics
       stats = get_statistics(history, tokenizer=tokenizer)
       assert "total_tokens" in stats  # Token stats included
-

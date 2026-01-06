@@ -240,9 +240,8 @@ class ChatContinue:
             history: Conversation history (required). Must be provided explicitly.
             add_continue_prompt: Whether to add a user continue instruction round.
             continue_prompt: User prompt when add_continue_prompt=True.
-            max_continues: Maximum number of continuation attempts. If result is still
-                truncated after max_continues, returns merged result.
-            **params: Additional parameters to pass to continue requests.
+            max_continues: Maximum number of continuation attempts. If result is still truncated after max_continues, returns merged result.
+            ``**params``: Additional parameters to pass to continue requests.
 
         Returns:
             StreamingIterator: Iterator that yields ChatStreamChunk objects for
@@ -253,7 +252,9 @@ class ChatContinue:
             ValueError: If last_result.finish_reason != "length" or history is not provided.
 
         Examples:
+
             Basic usage:
+
             >>> history = ChatHistory()
             >>> result = chat("Write a long story", history=history, max_tokens=50)
             >>> if result.finish_reason == "length":
@@ -261,9 +262,10 @@ class ChatContinue:
             ...     for chunk in iterator:
             ...         print(chunk.delta, end="", flush=True)
             ...     full_result = iterator.result.to_chat_result()
-            ...     print(f"\nComplete story: {len(full_result.text)} chars")
+            ...     print(f"\\nComplete story: {len(full_result.text)} chars")
 
             Multiple continues:
+
             >>> history = ChatHistory()
             >>> result = chat("Very long story", history=history, max_tokens=30)
             >>> if result.finish_reason == "length":
@@ -272,6 +274,7 @@ class ChatContinue:
             ...     )
             ...     for chunk in iterator:
             ...         print(chunk.delta, end="", flush=True)
+
         """
         if last_result.finish_reason != "length":
             raise ValueError(
@@ -301,13 +304,10 @@ class ChatContinue:
                     history.add_user(continue_prompt)
 
                 # Stream continue request
-                continue_iterator = chat.stream(
-                    history.get_messages(), history=history, **params
-                )
+                continue_iterator = chat.stream(history.get_messages(), history=history, **params)
 
                 # Yield all chunks from this continue request
-                for chunk in continue_iterator:
-                    yield chunk
+                yield from continue_iterator
 
                 # Get continue result for next iteration
                 continue_result = continue_iterator.result.to_chat_result()
@@ -341,7 +341,8 @@ class ChatContinue:
                 if self._all_results_ref:
                     # Remove any empty results (text='' and finish_reason=None)
                     self._all_results_ref[:] = [
-                        r for r in self._all_results_ref
+                        r
+                        for r in self._all_results_ref
                         if not (r.text == "" and r.finish_reason is None)
                     ]
 

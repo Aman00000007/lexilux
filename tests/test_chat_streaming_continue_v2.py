@@ -354,14 +354,18 @@ class TestCompleteStreamEdgeCases:
 
         history = ChatHistory()
         iterator = chat.complete_stream(
-            "Write a very long story", history=history, max_tokens=10, max_continues=2, ensure_complete=True
+            "Write a very long story",
+            history=history,
+            max_tokens=10,
+            max_continues=2,
+            ensure_complete=True,
         )
 
         # Should raise ChatIncompleteResponseError after iteration
         with pytest.raises(Exception):  # May raise during iteration or after
-            chunks = list(iterator)
+            list(iterator)
             # If iteration completes, error should be raised when accessing result
-            result = iterator.result.to_chat_result()
+            iterator.result.to_chat_result()
 
     @patch("lexilux.chat.client.requests.post")
     def test_complete_stream_ensure_complete_false_allows_partial(self, mock_post):
@@ -395,9 +399,8 @@ class TestCompleteStreamEdgeCases:
         )
 
         # Should not raise, even if still truncated
-        chunks = list(iterator)
+        list(iterator)
         result = iterator.result.to_chat_result()
 
         # Result may still be truncated
         assert result.finish_reason == "length"  # Still truncated after max_continues
-

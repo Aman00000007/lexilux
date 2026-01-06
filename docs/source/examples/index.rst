@@ -21,7 +21,6 @@ For real API testing with actual endpoints, see ``examples/real_api_test.py``.
    basic_chat
    chat_streaming
    chat_history
-   auto_history
    chat_continue
    chat_formatting
    embedding

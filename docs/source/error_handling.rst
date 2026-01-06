@@ -125,13 +125,14 @@ When using ``chat.complete()`` or continuation functionality, you may encounter
 
 .. code-block:: python
 
-   from lexilux import Chat
-   from lexilux.chat.exceptions import ChatIncompleteResponse
+   from lexilux import Chat, ChatHistory
+   from lexilux.chat.exceptions import ChatIncompleteResponseError
 
-   chat = Chat(..., auto_history=True)
+   chat = Chat(...)
+   history = ChatHistory()
 
    try:
-       result = chat.complete("Very long response", max_tokens=30, max_continues=2)
+       result = chat.complete("Very long response", history=history, max_tokens=30, max_continues=2)
    except ChatIncompleteResponse as e:
        print(f"Still incomplete after {e.continue_count} continues")
        print(f"Received: {len(e.final_result.text)} chars")
@@ -141,6 +142,7 @@ When using ``chat.complete()`` or continuation functionality, you may encounter
    # Or allow partial results
    result = chat.complete(
        "Very long response",
+       history=history,
        max_tokens=30,
        max_continues=2,
        ensure_complete=False  # Returns partial result instead of raising
@@ -151,16 +153,16 @@ When using ``chat.complete()`` or continuation functionality, you may encounter
 Handling Streaming Interruptions
 ---------------------------------
 
-When streaming is interrupted, partial content is preserved in history (if ``auto_history=True``).
-You can clean it up using ``clear_last_assistant_message()``:
+When streaming is interrupted, partial content is preserved in history (v2.0):
 
 .. code-block:: python
 
-   from lexilux import Chat
+   from lexilux import Chat, ChatHistory
 
-   chat = Chat(..., auto_history=True)
+   chat = Chat(...)
+   history = ChatHistory()
 
-   iterator = chat.stream("Long response")
+   iterator = chat.stream("Long response", history=history)
    try:
        for chunk in iterator:
            print(chunk.delta, end="")
@@ -168,8 +170,7 @@ You can clean it up using ``clear_last_assistant_message()``:
        print(f"\nStream interrupted: {e}")
        
        # Partial content is preserved in history
-       history = chat.get_history()
-       if history and history.messages:
+       if history.messages:
            last_msg = history.messages[-1]
            if last_msg.get("role") == "assistant":
                print(f"Partial content: {len(last_msg['content'])} chars")
@@ -232,15 +233,16 @@ Best Practices
 
    .. code-block:: python
 
-      from lexilux import Chat
-      from lexilux.chat.exceptions import ChatIncompleteResponse
+      from lexilux import Chat, ChatHistory
+      from lexilux.chat.exceptions import ChatIncompleteResponseError
 
-      chat = Chat(..., auto_history=True)
+      chat = Chat(...)
+      history = ChatHistory()
 
       try:
-          result = chat.complete("Extract JSON", max_tokens=100)
+          result = chat.complete("Extract JSON", history=history, max_tokens=100)
           json_data = json.loads(result.text)  # Guaranteed complete
-      except ChatIncompleteResponse as e:
+      except ChatIncompleteResponseError as e:
           print(f"Still incomplete: {e.final_result.text}")
           # Handle partial result
 
@@ -261,21 +263,25 @@ Best Practices
           else:
               print(f"\nInterrupted: {e}")
               # Clean up partial response if needed
-              if chat.auto_history:
-                  chat.clear_last_assistant_message()
+              # In v2.0, you manage history explicitly
+              if history.messages and history.messages[-1].get("role") == "assistant":
+                  history.remove_last()
 
-4. **Handle auto_history behavior on errors**:
+4. **Handle history behavior on errors** (v2.0):
 
    .. code-block:: python
 
-      chat = Chat(..., auto_history=True)
+      from lexilux import Chat, ChatHistory
+
+      chat = Chat(...)
+      history = ChatHistory()
 
       # Non-streaming: Exception means no assistant response in history
       try:
-          result = chat("Hello")
+          result = chat("Hello", history=history)
       except Exception:
           # History contains user message but NO assistant response
-          history = chat.get_history()
+          # (user message is added before request, assistant only on success)
           # Only user messages, no assistant responses for failed calls
 
       # Streaming: Partial content is preserved, clean up if needed

@@ -567,9 +567,7 @@ class Chat:
             # Add user messages to history before streaming
             for user_msg in user_messages_to_add:
                 history.add_user(user_msg)
-            streaming_iterator = self._wrap_streaming_with_history(
-                streaming_iterator, history
-            )
+            streaming_iterator = self._wrap_streaming_with_history(streaming_iterator, history)
 
         return streaming_iterator
 
@@ -594,6 +592,7 @@ class Chat:
         Returns:
             Wrapped StreamingIterator that updates history on each chunk.
         """
+
         # Wrap iterator to update history
         class HistoryUpdatingIterator(StreamingIterator):
             """Iterator wrapper that updates history on each chunk."""
@@ -968,6 +967,7 @@ class Chat:
                     final_result = self.result.to_chat_result()
                     if final_result.finish_reason == "length":
                         from lexilux.chat.exceptions import ChatIncompleteResponseError
+
                         raise ChatIncompleteResponseError(
                             f"Response still truncated after {self._max_continues} continues. "
                             f"Consider increasing max_continues or max_tokens.",
@@ -993,12 +993,12 @@ class Chat:
         Make a chat completion request using history.
 
         This is a convenience method. You can also use:
-        >>> chat(message, history=history, **params)
+        >>> chat(message, history=history, \*\*params)
 
         Args:
             history: ChatHistory instance to use.
             message: Optional new message to add. If None, uses history as-is.
-            **params: Additional parameters to pass to __call__.
+            ``**params``: Additional parameters to pass to __call__.
 
         Returns:
             ChatResult from the API call.
@@ -1028,12 +1028,12 @@ class Chat:
         Make a streaming chat completion request using history.
 
         This is a convenience method. You can also use:
-        >>> chat.stream(message, history=history, **params)
+        >>> chat.stream(message, history=history, \*\*params)
 
         Args:
             history: ChatHistory instance to use.
             message: Optional new message to add. If None, uses history as-is.
-            **params: Additional parameters to pass to stream().
+            ``**params``: Additional parameters to pass to stream().
 
         Returns:
             StreamingIterator for the streaming response.
