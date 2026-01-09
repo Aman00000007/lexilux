@@ -7,7 +7,10 @@ is stopped due to max_tokens limit.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Iterator, Literal, overload
+import logging
+import random
+import time
+from typing import TYPE_CHECKING, Any, Callable, Iterator, Literal, overload
 
 from lexilux.chat.history import ChatHistory
 from lexilux.chat.models import ChatResult, ChatStreamChunk
@@ -16,6 +19,8 @@ from lexilux.usage import Usage
 
 if TYPE_CHECKING:
     from lexilux.chat.client import Chat
+
+logger = logging.getLogger(__name__)
 
 
 class ChatContinue:
@@ -27,6 +32,147 @@ class ChatContinue:
     """
 
     @staticmethod
+    def needs_continue(result: ChatResult) -> bool:
+        """
+        Check if a result needs continuation.
+
+        Args:
+            result: ChatResult to check.
+
+        Returns:
+            True if result.finish_reason == "length", False otherwise.
+
+        Examples:
+            >>> result = chat("Write a story", max_tokens=50)
+            >>> if ChatContinue.needs_continue(result):
+            ...     full_result = ChatContinue.continue_request(chat, result, history=history)
+        """
+        return result.finish_reason == "length"
+
+    @staticmethod
+    def _get_continue_prompt(
+        continue_prompt: str | Callable,
+        continue_count: int,
+        max_continues: int,
+        current_text: str,
+        original_prompt: str | None = None,
+    ) -> str:
+        """
+        Get continue prompt (supports string or callable).
+
+        Args:
+            continue_prompt: String or callable that generates the prompt.
+            continue_count: Current continue count (1-indexed).
+            max_continues: Maximum number of continues.
+            current_text: Current accumulated text.
+            original_prompt: Original user prompt (if available).
+
+        Returns:
+            Continue prompt string.
+        """
+        if callable(continue_prompt):
+            return continue_prompt(continue_count, max_continues, current_text, original_prompt or "")
+        return continue_prompt
+
+    @staticmethod
+    def _call_progress_callback(
+        on_progress: Callable | None,
+        continue_count: int,
+        max_continues: int,
+        current_result: ChatResult,
+        all_results: list[ChatResult],
+    ) -> None:
+        """
+        Call progress callback if provided.
+
+        Args:
+            on_progress: Progress callback function.
+            continue_count: Current continue count.
+            max_continues: Maximum number of continues.
+            current_result: Current result.
+            all_results: All results so far.
+        """
+        if on_progress:
+            try:
+                on_progress(continue_count, max_continues, current_result, all_results)
+            except Exception as e:
+                # Callback failure should not affect main flow
+                logger.warning(f"Progress callback failed: {e}")
+
+    @staticmethod
+    def _apply_continue_delay(
+        continue_delay: float | tuple[float, float],
+        continue_count: int,
+    ) -> None:
+        """
+        Apply continue delay if needed.
+
+        Args:
+            continue_delay: Fixed delay (seconds) or tuple (min, max) for random delay.
+            continue_count: Current continue count (delay only applied if count > 1).
+        """
+        if continue_count <= 1:
+            return  # No delay for first continue
+
+        if isinstance(continue_delay, tuple):
+            # Random delay range
+            delay = random.uniform(continue_delay[0], continue_delay[1])
+        else:
+            # Fixed delay
+            delay = continue_delay
+
+        if delay > 0:
+            time.sleep(delay)
+
+    @staticmethod
+    def _handle_continue_error(
+        error: Exception,
+        partial_result: ChatResult,
+        all_results: list[ChatResult],
+        on_error: str,
+        on_error_callback: Callable | None,
+    ) -> ChatResult:
+        """
+        Handle continue error based on strategy.
+
+        Args:
+            error: Exception that occurred.
+            partial_result: Partial result before error.
+            all_results: All results collected so far.
+            on_error: Error strategy ("raise" or "return_partial").
+            on_error_callback: Optional error callback function.
+
+        Returns:
+            ChatResult if returning partial, otherwise raises exception.
+
+        Raises:
+            Exception: If strategy is "raise" or callback returns "raise".
+        """
+        if on_error_callback:
+            try:
+                response = on_error_callback(error, partial_result)
+                if isinstance(response, dict):
+                    action = response.get("action", "raise")
+                    if action == "return_partial":
+                        if len(all_results) > 1:
+                            return ChatContinue.merge_results(*all_results)
+                        return partial_result
+                    elif action == "retry":
+                        # Retry not implemented yet
+                        raise NotImplementedError("Retry action not implemented")
+                    # else: "raise" - fall through
+            except Exception as callback_error:
+                logger.warning(f"Error callback failed: {callback_error}")
+                # Fall through to default behavior
+
+        if on_error == "return_partial":
+            if len(all_results) > 1:
+                return ChatContinue.merge_results(*all_results)
+            return partial_result
+        else:  # "raise"
+            raise
+
+    @staticmethod
     @overload
     def continue_request(
         chat: Chat,
@@ -34,9 +180,14 @@ class ChatContinue:
         *,
         history: ChatHistory | None = None,
         add_continue_prompt: bool = True,
-        continue_prompt: str = "continue",
+        continue_prompt: str | Callable = "continue",
         max_continues: int = 1,
         auto_merge: Literal[True] = True,
+        on_progress: Callable | None = None,
+        continue_delay: float | tuple[float, float] = 0.0,
+        on_error: str = "raise",
+        on_error_callback: Callable | None = None,
+        original_prompt: str | None = None,
         **params: Any,
     ) -> ChatResult: ...
 
@@ -48,9 +199,14 @@ class ChatContinue:
         *,
         history: ChatHistory | None = None,
         add_continue_prompt: bool = True,
-        continue_prompt: str = "continue",
+        continue_prompt: str | Callable = "continue",
         max_continues: int = 1,
         auto_merge: Literal[False],
+        on_progress: Callable | None = None,
+        continue_delay: float | tuple[float, float] = 0.0,
+        on_error: str = "raise",
+        on_error_callback: Callable | None = None,
+        original_prompt: str | None = None,
         **params: Any,
     ) -> list[ChatResult]: ...
 
@@ -61,28 +217,46 @@ class ChatContinue:
         *,
         history: ChatHistory | None = None,
         add_continue_prompt: bool = True,
-        continue_prompt: str = "continue",
+        continue_prompt: str | Callable = "continue",
         max_continues: int = 1,
         auto_merge: bool = True,
+        on_progress: Callable | None = None,
+        continue_delay: float | tuple[float, float] = 0.0,
+        on_error: str = "raise",
+        on_error_callback: Callable | None = None,
+        original_prompt: str | None = None,
         **params: Any,
     ) -> ChatResult | list[ChatResult]:
         """
-        Continue generation request (enhanced version).
+        Continue generation request (enhanced version with customization support).
 
         Automatically handles continuation when finish_reason == "length", with support
-        for multiple continues and automatic merging.
+        for multiple continues, automatic merging, and customizable strategies.
+
+        **History Immutability**: If history is provided, a clone is created and used internally.
+        The original history is never modified.
 
         Args:
             chat: Chat client instance.
             last_result: Last result (must have finish_reason == "length").
             history: Conversation history (required). Must be provided explicitly.
             add_continue_prompt: Whether to add a user continue instruction round.
-            continue_prompt: User prompt when add_continue_prompt=True.
+            continue_prompt: User prompt when add_continue_prompt=True. Can be a string or
+                a callable with signature: (count: int, max_count: int, current_text: str, original_prompt: str) -> str
             max_continues: Maximum number of continuation attempts. If result is still
                 truncated after max_continues, returns merged result (if auto_merge=True)
                 or list of results (if auto_merge=False).
             auto_merge: If True, automatically merge all results into a single ChatResult.
                 If False, returns a list of all results [last_result, continue_result1, ...].
+            on_progress: Optional progress callback function with signature:
+                (count: int, max_count: int, current_result: ChatResult, all_results: list[ChatResult]) -> None
+            continue_delay: Delay between continue requests (seconds). Can be a float (fixed delay)
+                or tuple (min, max) for random delay. Delay is only applied after the first continue.
+            on_error: Error handling strategy: "raise" (default) or "return_partial".
+            on_error_callback: Optional error callback function with signature:
+                (error: Exception, partial_result: ChatResult) -> dict
+                Should return {"action": "raise" | "return_partial" | "retry", "result": ChatResult}
+            original_prompt: Original user prompt (used for dynamic continue_prompt generation).
             **params: Additional parameters to pass to chat (temperature, max_tokens, etc.).
 
         Returns:
@@ -91,6 +265,7 @@ class ChatContinue:
 
         Raises:
             ValueError: If last_result.finish_reason != "length" or history is not provided.
+            Exception: If on_error="raise" and an error occurs during continuation.
 
         Examples:
             Basic usage:
@@ -100,20 +275,23 @@ class ChatContinue:
             ...     full_result = ChatContinue.continue_request(chat, result, history=history)
             ...     print(full_result.text)  # Complete merged text
 
-            Multiple continues:
-            >>> history = ChatHistory()
-            >>> result = chat("Very long story", history=history, max_tokens=30)
-            >>> if result.finish_reason == "length":
-            ...     full_result = ChatContinue.continue_request(chat, result, history=history, max_continues=3)
+            With progress tracking:
+            >>> def on_progress(count, max_count, current, all_results):
+            ...     print(f"继续生成 {count}/{max_count}...")
+            >>> full_result = ChatContinue.continue_request(
+            ...     chat, result, history=history,
+            ...     on_progress=on_progress
+            ... )
 
-            Get all intermediate results:
-            >>> history = ChatHistory()
-            >>> result = chat("Story", history=history, max_tokens=50)
-            >>> if result.finish_reason == "length":
-            ...     all_results = ChatContinue.continue_request(chat, result, history=history, auto_merge=False)
-            ...     # all_results = [result, continue_result1, continue_result2, ...]
+            With custom prompt and delay:
+            >>> def smart_prompt(count, max_count, current_text, original_prompt):
+            ...     return f"请继续完成（第 {count}/{max_count} 次）"
+            >>> full_result = ChatContinue.continue_request(
+            ...     chat, result, history=history,
+            ...     continue_prompt=smart_prompt,
+            ...     continue_delay=(1.0, 2.0)  # Random delay 1-2 seconds
+            ... )
         """
-
         if last_result.finish_reason != "length":
             raise ValueError(
                 f"continue_request requires finish_reason='length', "
@@ -125,21 +303,64 @@ class ChatContinue:
                 "History is required. Provide history explicitly when calling continue_request."
             )
 
+        # Create working history (immutable - clone original)
+        working_history = history.clone()
+
         all_results = [last_result]
         current_result = last_result
         continue_count = 0
+        accumulated_text = last_result.text
+
+        # Get original prompt from history if not provided
+        if original_prompt is None:
+            history_messages = working_history.get_messages()
+            for msg in reversed(history_messages):
+                if msg.get("role") == "user":
+                    original_prompt = msg.get("content", "")
+                    break
 
         while current_result.finish_reason == "length" and continue_count < max_continues:
             continue_count += 1
 
-            # Execute single continue request
-            if add_continue_prompt:
-                history.add_user(continue_prompt)
+            # Apply delay if needed (not for first continue)
+            ChatContinue._apply_continue_delay(continue_delay, continue_count)
 
-            continue_result = chat(history.get_messages(), history=history, **params)
-            all_results.append(continue_result)
-            current_result = continue_result
-            # Note: history is automatically updated by chat() call above
+            # Call progress callback
+            ChatContinue._call_progress_callback(
+                on_progress, continue_count, max_continues, current_result, all_results
+            )
+
+            try:
+                # Get continue prompt (supports string or callable)
+                prompt = ChatContinue._get_continue_prompt(
+                    continue_prompt,
+                    continue_count,
+                    max_continues,
+                    accumulated_text,
+                    original_prompt or "",
+                )
+
+                # Execute single continue request
+                if add_continue_prompt:
+                    working_history.add_user(prompt)
+
+                continue_result = chat(
+                    working_history.get_messages(), history=working_history, **params
+                )
+                all_results.append(continue_result)
+                current_result = continue_result
+                accumulated_text += continue_result.text
+
+            except Exception as e:
+                # Handle error based on strategy
+                try:
+                    result = ChatContinue._handle_continue_error(
+                        e, current_result, all_results, on_error, on_error_callback
+                    )
+                    return result if auto_merge else all_results
+                except Exception:
+                    # Re-raise if strategy is "raise"
+                    raise
 
         # Check if still truncated after max_continues
         if current_result.finish_reason == "length":
@@ -224,24 +445,41 @@ class ChatContinue:
         *,
         history: ChatHistory,
         add_continue_prompt: bool = True,
-        continue_prompt: str = "continue",
+        continue_prompt: str | Callable = "continue",
         max_continues: int = 1,
+        on_progress: Callable | None = None,
+        continue_delay: float | tuple[float, float] = 0.0,
+        on_error: str = "raise",
+        on_error_callback: Callable | None = None,
+        original_prompt: str | None = None,
         **params: Any,
     ) -> StreamingIterator:
         """
-        Continue generation with streaming output.
+        Continue generation with streaming output (enhanced version with customization support).
 
         This is the streaming version of `continue_request()`. It returns a
         StreamingIterator that yields chunks for all continuation requests.
+
+        **History Immutability**: If history is provided, a clone is created and used internally.
+        The original history is never modified.
 
         Args:
             chat: Chat client instance.
             last_result: Last result (must have finish_reason == "length").
             history: Conversation history (required). Must be provided explicitly.
             add_continue_prompt: Whether to add a user continue instruction round.
-            continue_prompt: User prompt when add_continue_prompt=True.
+            continue_prompt: User prompt when add_continue_prompt=True. Can be a string or
+                a callable with signature: (count: int, max_count: int, current_text: str, original_prompt: str) -> str
             max_continues: Maximum number of continuation attempts. If result is still truncated after max_continues, returns merged result.
-            ``**params``: Additional parameters to pass to continue requests.
+            on_progress: Optional progress callback function with signature:
+                (count: int, max_count: int, current_result: ChatResult, all_results: list[ChatResult]) -> None
+            continue_delay: Delay between continue requests (seconds). Can be a float (fixed delay)
+                or tuple (min, max) for random delay. Delay is only applied after the first continue.
+            on_error: Error handling strategy: "raise" (default) or "return_partial".
+            on_error_callback: Optional error callback function with signature:
+                (error: Exception, partial_result: ChatResult) -> dict
+            original_prompt: Original user prompt (used for dynamic continue_prompt generation).
+            **params: Additional parameters to pass to continue requests.
 
         Returns:
             StreamingIterator: Iterator that yields ChatStreamChunk objects for
@@ -250,11 +488,10 @@ class ChatContinue:
 
         Raises:
             ValueError: If last_result.finish_reason != "length" or history is not provided.
+            Exception: If on_error="raise" and an error occurs during continuation.
 
         Examples:
-
             Basic usage:
-
             >>> history = ChatHistory()
             >>> result = chat("Write a long story", history=history, max_tokens=50)
             >>> if result.finish_reason == "length":
@@ -262,19 +499,14 @@ class ChatContinue:
             ...     for chunk in iterator:
             ...         print(chunk.delta, end="", flush=True)
             ...     full_result = iterator.result.to_chat_result()
-            ...     print(f"\\nComplete story: {len(full_result.text)} chars")
 
-            Multiple continues:
-
-            >>> history = ChatHistory()
-            >>> result = chat("Very long story", history=history, max_tokens=30)
-            >>> if result.finish_reason == "length":
-            ...     iterator = ChatContinue.continue_request_stream(
-            ...         chat, result, history=history, max_continues=3
-            ...     )
-            ...     for chunk in iterator:
-            ...         print(chunk.delta, end="", flush=True)
-
+            With progress tracking:
+            >>> def on_progress(count, max_count, current, all_results):
+            ...     print(f"继续生成 {count}/{max_count}...")
+            >>> iterator = ChatContinue.continue_request_stream(
+            ...     chat, result, history=history,
+            ...     on_progress=on_progress
+            ... )
         """
         if last_result.finish_reason != "length":
             raise ValueError(
@@ -287,6 +519,17 @@ class ChatContinue:
                 "History is required. Provide history explicitly when calling continue_request_stream."
             )
 
+        # Create working history (immutable - clone original)
+        working_history = history.clone()
+
+        # Get original prompt from history if not provided
+        if original_prompt is None:
+            history_messages = working_history.get_messages()
+            for msg in reversed(history_messages):
+                if msg.get("role") == "user":
+                    original_prompt = msg.get("content", "")
+                    break
+
         # Create generator that yields chunks and tracks results
         all_results: list[ChatResult] = [last_result]
 
@@ -295,25 +538,58 @@ class ChatContinue:
             nonlocal all_results
             current_result = last_result
             continue_count = 0
+            accumulated_text = last_result.text
 
             while current_result.finish_reason == "length" and continue_count < max_continues:
                 continue_count += 1
 
-                # Add continue prompt if needed
-                if add_continue_prompt:
-                    history.add_user(continue_prompt)
+                # Apply delay if needed (not for first continue)
+                ChatContinue._apply_continue_delay(continue_delay, continue_count)
 
-                # Stream continue request
-                continue_iterator = chat.stream(history.get_messages(), history=history, **params)
+                # Call progress callback
+                ChatContinue._call_progress_callback(
+                    on_progress, continue_count, max_continues, current_result, all_results
+                )
 
-                # Yield all chunks from this continue request
-                yield from continue_iterator
+                try:
+                    # Get continue prompt (supports string or callable)
+                    prompt = ChatContinue._get_continue_prompt(
+                        continue_prompt,
+                        continue_count,
+                        max_continues,
+                        accumulated_text,
+                        original_prompt or "",
+                    )
 
-                # Get continue result for next iteration
-                continue_result = continue_iterator.result.to_chat_result()
-                all_results.append(continue_result)
-                current_result = continue_result
-                # Note: history is automatically updated by chat.stream() call above
+                    # Add continue prompt if needed
+                    if add_continue_prompt:
+                        working_history.add_user(prompt)
+
+                    # Stream continue request
+                    continue_iterator = chat.stream(
+                        working_history.get_messages(), history=working_history, **params
+                    )
+
+                    # Yield all chunks from this continue request
+                    yield from continue_iterator
+
+                    # Get continue result for next iteration
+                    continue_result = continue_iterator.result.to_chat_result()
+                    all_results.append(continue_result)
+                    current_result = continue_result
+                    accumulated_text += continue_result.text
+
+                except Exception as e:
+                    # Handle error based on strategy
+                    try:
+                        ChatContinue._handle_continue_error(
+                            e, current_result, all_results, on_error, on_error_callback
+                        )
+                        # If returning partial, stop iteration
+                        break
+                    except Exception:
+                        # Re-raise if strategy is "raise"
+                        raise
 
         # Create StreamingIterator with custom result that merges all continues
         class MergedContinueIterator(StreamingIterator):

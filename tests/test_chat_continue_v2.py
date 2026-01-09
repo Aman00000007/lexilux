@@ -335,8 +335,8 @@ class TestChatContinueContinueRequestStream:
         assert full_result.finish_reason == "stop"
 
     @patch("lexilux.chat.client.requests.post")
-    def test_continue_request_stream_updates_history(self, mock_post):
-        """Test that continue_request_stream updates history"""
+    def test_continue_request_stream_history_immutability(self, mock_post):
+        """Test that continue_request_stream does not modify original history (immutable)"""
         chat = Chat(
             base_url="https://api.example.com/v1",
             api_key="test-key",
@@ -353,6 +353,7 @@ class TestChatContinueContinueRequestStream:
         history.append_result(result1)
 
         initial_count = len(history.messages)
+        initial_messages = history.messages.copy()
 
         # Stream response
         stream_data = [
@@ -373,12 +374,15 @@ class TestChatContinueContinueRequestStream:
         # Iterate all chunks
         list(iterator)
 
-        # History should be updated with continue prompt and response
-        # Should have: original messages + continue prompt + continue response
-        assert len(history.messages) > initial_count
-        # Last message should be assistant response
-        assert history.messages[-1]["role"] == "assistant"
-        assert "Part 2" in history.messages[-1]["content"]
+        # Original history should NOT be modified (immutable)
+        # Working history is cloned internally
+        assert len(history.messages) == initial_count
+        assert history.messages == initial_messages
+        
+        # Verify result contains merged text
+        final_result = iterator.result.to_chat_result()
+        assert "Part 1" in final_result.text
+        assert "Part 2" in final_result.text or " Part 2" in final_result.text
 
 
 class TestChatContinueMergeResults:
