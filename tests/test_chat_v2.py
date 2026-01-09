@@ -16,9 +16,8 @@ from unittest.mock import Mock, patch
 import pytest
 import requests
 
-from lexilux import Chat, ChatHistory, ChatResult
+from lexilux import Chat, ChatHistory
 from lexilux.chat.exceptions import ChatIncompleteResponseError
-from lexilux.usage import Usage
 
 
 class TestChatInit:

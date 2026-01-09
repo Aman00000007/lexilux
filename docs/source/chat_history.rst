@@ -1,14 +1,19 @@
-Chat History Management (v2.0)
-===============================
+Chat History Management
+=======================
 
-Lexilux v2.0 provides comprehensive conversation history management with **explicit history control**.
-All history management is now explicit - you create and manage `ChatHistory` objects yourself.
+Lexilux provides comprehensive conversation history management with **immutable history objects**.
+All history management is explicit - you create and manage `ChatHistory` objects yourself.
+
+.. important::
+   **History Immutability**: All methods that receive a `history` parameter create a clone internally
+   and **never modify the original history object**. You must manually update your history after each API call.
 
 Overview
 --------
 
 The ``ChatHistory`` class provides:
 
+* **Immutable History Objects**: Methods clone history internally, never modify original
 * **Explicit History Management**: You create and pass history objects explicitly
 * **MutableSequence Protocol**: Array-like operations (indexing, slicing, iteration)
 * **Serialization** to/from JSON for persistence
@@ -20,12 +25,275 @@ The ``ChatHistory`` class provides:
 Key Features
 ------------
 
-1. **Explicit Control**: You manage history objects explicitly - no hidden state
-2. **Array-like Operations**: Use indexing, slicing, iteration like a list
-3. **Flexible Input**: Supports all message formats (string, list of strings, list of dicts)
-4. **Serialization**: Save and load conversations as JSON
-5. **Token Management**: Count tokens and truncate by rounds to fit context windows
-6. **Format Export**: Export to Markdown, HTML, Text, or JSON formats
+1. **Immutable by Default**: All API methods clone history internally - original never modified
+2. **Explicit Control**: You manage history objects explicitly - no hidden state
+3. **Array-like Operations**: Use indexing, slicing, iteration like a list
+4. **Flexible Input**: Supports all message formats (string, list of strings, list of dicts)
+5. **Serialization**: Save and load conversations as JSON
+6. **Token Management**: Count tokens and truncate by rounds to fit context windows
+7. **Format Export**: Export to Markdown, HTML, Text, or JSON formats
+
+History Immutability
+--------------------
+
+.. important::
+   **All API methods create a clone of the history internally and never modify the original.**
+
+   This means:
+   
+   * ✅ Thread-safe: Multiple threads can use the same history object
+   * ✅ No side effects: Original history is never changed
+   * ✅ Functional programming: Predictable behavior
+   * ⚠️ **You must manually update history after each API call**
+
+Manual History Updates
+~~~~~~~~~~~~~~~~~~~~~~
+
+Since history is immutable, you need to manually update it after each API call:
+
+**Non-streaming methods** (`chat()`, `chat.complete()`):
+
+.. code-block:: python
+
+   from lexilux import Chat, ChatHistory
+
+   chat = Chat(...)
+   history = ChatHistory()
+
+   # Call API - original history is NOT modified
+   result = chat("What is Python?", history=history)
+   
+   # Manually update history
+   history.add_user("What is Python?")
+   history.append_result(result)
+   
+   # Now history contains the turn
+   assert len(history.messages) == 2
+
+**Streaming methods** (`chat.stream()`, `chat.complete_stream()`):
+
+.. code-block:: python
+
+   # Call streaming API - original history is NOT modified
+   iterator = chat.stream("Tell me more", history=history)
+   
+   # Consume iterator
+   for chunk in iterator:
+       print(chunk.delta, end="", flush=True)
+   
+   # Get result and manually update history
+   result = iterator.result.to_chat_result()
+   history.add_user("Tell me more")
+   history.append_result(result)
+
+**Complete methods** (`chat.complete()`, `chat.complete_stream()`):
+
+.. code-block:: python
+
+   # complete() also doesn't modify original history
+   result = chat.complete("Write JSON", history=history, max_tokens=100)
+   
+   # Manually update history
+   history.add_user("Write JSON")
+   history.append_result(result)
+
+Complete Examples: All Interfaces
+----------------------------------
+
+Example 1: chat() - Non-streaming
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: python
+
+   from lexilux import Chat, ChatHistory
+
+   chat = Chat(...)
+   history = ChatHistory()
+
+   # Single-turn conversation
+   result = chat("Hello", history=history)
+   # Original history unchanged - manually update
+   history.add_user("Hello")
+   history.append_result(result)
+   assert len(history.messages) == 2
+
+   # Multi-turn conversation
+   result2 = chat("How are you?", history=history)
+   # Manually update again
+   history.add_user("How are you?")
+   history.append_result(result2)
+   assert len(history.messages) == 4
+
+Example 2: chat.stream() - Streaming
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: python
+
+   from lexilux import Chat, ChatHistory
+
+   chat = Chat(...)
+   history = ChatHistory()
+
+   # Streaming call - original history unchanged
+   iterator = chat.stream("Write a story", history=history)
+   
+   # Consume stream
+   for chunk in iterator:
+       print(chunk.delta, end="", flush=True)
+   
+   # Get result and manually update history
+   result = iterator.result.to_chat_result()
+   history.add_user("Write a story")
+   history.append_result(result)
+   assert len(history.messages) == 2
+
+   # Continue conversation
+   iterator2 = chat.stream("Continue the story", history=history)
+   for chunk in iterator2:
+       print(chunk.delta, end="", flush=True)
+   
+   result2 = iterator2.result.to_chat_result()
+   history.add_user("Continue the story")
+   history.append_result(result2)
+   assert len(history.messages) == 4
+
+Example 3: chat.complete() - Complete Response
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: python
+
+   from lexilux import Chat, ChatHistory
+
+   chat = Chat(...)
+   history = ChatHistory()
+
+   # Single-turn (no history needed)
+   result = chat.complete("Write JSON", max_tokens=100)
+   # No history to update
+
+   # Multi-turn (with history)
+   result = chat.complete("First question", history=history, max_tokens=100)
+   # Manually update history
+   history.add_user("First question")
+   history.append_result(result)
+
+   result2 = chat.complete("Follow-up", history=history, max_tokens=100)
+   history.add_user("Follow-up")
+   history.append_result(result2)
+
+Example 4: chat.complete_stream() - Streaming Complete
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: python
+
+   from lexilux import Chat, ChatHistory
+
+   chat = Chat(...)
+   history = ChatHistory()
+
+   # Single-turn (no history needed)
+   iterator = chat.complete_stream("Write JSON", max_tokens=100)
+   for chunk in iterator:
+       print(chunk.delta, end="", flush=True)
+   result = iterator.result.to_chat_result()
+   # No history to update
+
+   # Multi-turn (with history)
+   iterator = chat.complete_stream("First question", history=history, max_tokens=100)
+   for chunk in iterator:
+       print(chunk.delta, end="", flush=True)
+   result = iterator.result.to_chat_result()
+   # Manually update history
+   history.add_user("First question")
+   history.append_result(result)
+
+   iterator2 = chat.complete_stream("Follow-up", history=history, max_tokens=100)
+   for chunk in iterator2:
+       print(chunk.delta, end="", flush=True)
+   result2 = iterator2.result.to_chat_result()
+   history.add_user("Follow-up")
+   history.append_result(result2)
+
+Example 5: ChatContinue.continue_request() - Manual Continue
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: python
+
+   from lexilux import Chat, ChatHistory, ChatContinue
+
+   chat = Chat(...)
+   history = ChatHistory()
+
+   # Initial request
+   result = chat("Write a long story", history=history, max_tokens=50)
+   # Manually update history
+   history.add_user("Write a long story")
+   history.append_result(result)
+
+   # Continue if truncated
+   if result.finish_reason == "length":
+       # continue_request also doesn't modify original history
+       full_result = ChatContinue.continue_request(
+           chat, result, history=history, max_continues=3
+       )
+       # Note: continue_request adds continue prompts internally to working history
+       # But original history is unchanged - you may want to update with final result
+       # Or manually add continue prompts if needed
+       history.append_result(full_result)  # Add merged result
+
+Example 6: ChatContinue.continue_request_stream() - Streaming Continue
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: python
+
+   from lexilux import Chat, ChatHistory, ChatContinue
+
+   chat = Chat(...)
+   history = ChatHistory()
+
+   # Initial request
+   result = chat("Write a long story", history=history, max_tokens=50)
+   history.add_user("Write a long story")
+   history.append_result(result)
+
+   # Continue with streaming
+   if result.finish_reason == "length":
+       iterator = ChatContinue.continue_request_stream(
+           chat, result, history=history, max_continues=2
+       )
+       for chunk in iterator:
+           print(chunk.delta, end="", flush=True)
+       
+       # Get merged result
+       full_result = iterator.result.to_chat_result()
+       # Update history with final merged result
+       history.append_result(full_result)
+
+Helper Function: Update History from Result
+--------------------------------------------
+
+For convenience, you can create a helper function:
+
+.. code-block:: python
+
+   def update_history_from_result(history: ChatHistory, user_message: str, result):
+       """Helper to update history after API call."""
+       history.add_user(user_message)
+       if isinstance(result, ChatResult):
+           history.append_result(result)
+       else:
+           # StreamingIterator
+           history.append_result(result.result.to_chat_result())
+
+   # Usage
+   history = ChatHistory()
+   result = chat("Hello", history=history)
+   update_history_from_result(history, "Hello", result)
+
+   iterator = chat.stream("How are you?", history=history)
+   for chunk in iterator:
+       print(chunk.delta, end="", flush=True)
+   update_history_from_result(history, "How are you?", iterator)
 
 Basic Usage
 -----------
@@ -33,7 +301,7 @@ Basic Usage
 Creating and Using History
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-In v2.0, you explicitly create and pass history objects:
+You explicitly create and pass history objects, then manually update them:
 
 .. code-block:: python
 
@@ -46,11 +314,15 @@ In v2.0, you explicitly create and pass history objects:
    
    # First turn - pass history explicitly
    result1 = chat("What is Python?", history=history)
-   # History is automatically updated with user message and assistant response
+   # Original history unchanged - manually update
+   history.add_user("What is Python?")
+   history.append_result(result1)
    
    # Second turn - same history object
    result2 = chat("Tell me more", history=history)
-   # History now contains both turns
+   # Manually update again
+   history.add_user("Tell me more")
+   history.append_result(result2)
    
    print(f"Total messages: {len(history.messages)}")  # 4 messages
 
@@ -89,16 +361,67 @@ For more control, you can manually construct and manage history:
    # Add user message
    history.add_user("What is Python?")
 
-   # Call API with history
-   result = chat(history.get_messages(), history=history)
-
-   # Assistant response is automatically added to history
-   # Or manually add:
-   # history.append_result(result)
+   # Call API with history (original unchanged)
+   result = chat("What is Python?", history=history)
+   
+   # Manually add result
+   history.append_result(result)
 
    # Continue conversation
    history.add_user("Tell me more")
-   result2 = chat(history.get_messages(), history=history)
+   result2 = chat("Tell me more", history=history)
+   history.append_result(result2)
+
+Why Immutability?
+-----------------
+
+Benefits of immutable history:
+
+1. **Thread Safety**: Multiple threads can safely use the same history object
+2. **No Side Effects**: Original history is never modified unexpectedly
+3. **Functional Programming**: Predictable, testable code
+4. **Explicit Control**: You decide exactly when and how history is updated
+
+Multi-turn Conversation Pattern
+--------------------------------
+
+Complete pattern for multi-turn conversations:
+
+.. code-block:: python
+
+   from lexilux import Chat, ChatHistory
+
+   chat = Chat(...)
+   history = ChatHistory()
+
+   # Turn 1: Non-streaming
+   result1 = chat("Hello", history=history)
+   history.add_user("Hello")
+   history.append_result(result1)
+
+   # Turn 2: Streaming
+   iterator2 = chat.stream("How are you?", history=history)
+   for chunk in iterator2:
+       print(chunk.delta, end="", flush=True)
+   result2 = iterator2.result.to_chat_result()
+   history.add_user("How are you?")
+   history.append_result(result2)
+
+   # Turn 3: Complete (guaranteed complete)
+   result3 = chat.complete("Write JSON", history=history, max_tokens=100)
+   history.add_user("Write JSON")
+   history.append_result(result3)
+
+   # Turn 4: Complete streaming
+   iterator4 = chat.complete_stream("Continue", history=history, max_tokens=100)
+   for chunk in iterator4:
+       print(chunk.delta, end="", flush=True)
+   result4 = iterator4.result.to_chat_result()
+   history.add_user("Continue")
+   history.append_result(result4)
+
+   # History now contains all 4 turns
+   assert len(history.messages) == 8  # 4 user + 4 assistant
 
 MutableSequence Operations
 ---------------------------
@@ -173,7 +496,7 @@ Length and Membership
    assert history[0] in history
 
 Modification Operations
-~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: python
 
@@ -410,7 +733,7 @@ Count tokens in the entire history:
    print(f"Total tokens: {total_tokens}")
 
 Count Tokens Per Round
-~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~
 
 Count tokens for each conversation round:
 
@@ -434,7 +757,7 @@ Count tokens grouped by role (system, user, assistant):
    print(f"Assistant tokens: {role_tokens['assistant']}")
 
 Comprehensive Token Analysis
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Get detailed token analysis with per-message and per-round breakdowns:
 
@@ -491,20 +814,45 @@ Truncate history to fit within a token limit, keeping the most recent rounds:
 Best Practices
 --------------
 
-1. **Explicit History Management**: Always create and pass history objects explicitly.
-   This gives you full control over when and how history is used.
+1. **Always Manually Update History**: After each API call, manually update your history:
 
-2. **Use Same History Object**: For a conversation session, use the same history object
+   .. code-block:: python
+
+      history = ChatHistory()
+      result = chat("Hello", history=history)
+      # Don't forget to update!
+      history.add_user("Hello")
+      history.append_result(result)
+
+2. **Use Helper Functions**: Create helper functions to reduce boilerplate:
+
+   .. code-block:: python
+
+      def chat_with_history(chat, history, message, **kwargs):
+          """Chat and automatically update history."""
+          result = chat(message, history=history, **kwargs)
+          history.add_user(message)
+          history.append_result(result)
+          return result
+
+      # Usage
+      result = chat_with_history(chat, history, "Hello")
+
+3. **Same History Object**: For a conversation session, use the same history object
    across all calls:
 
    .. code-block:: python
 
       history = ChatHistory()
       result1 = chat("Hello", history=history)
+      history.add_user("Hello")
+      history.append_result(result1)
+      
       result2 = chat("How are you?", history=history)
-      # Both calls update the same history object
+      history.add_user("How are you?")
+      history.append_result(result2)
 
-3. **Multiple Independent Histories**: You can use multiple history objects for different
+4. **Multiple Independent Histories**: You can use multiple history objects for different
    conversations:
 
    .. code-block:: python
@@ -512,11 +860,16 @@ Best Practices
       history1 = ChatHistory()
       history2 = ChatHistory()
       
-      chat("Hello", history=history1)
-      chat("Hi", history=history2)
+      result1 = chat("Hello", history=history1)
+      history1.add_user("Hello")
+      history1.append_result(result1)
+      
+      result2 = chat("Hi", history=history2)
+      history2.add_user("Hi")
+      history2.append_result(result2)
       # Two independent conversations
 
-4. **Serialize Regularly**: Save important conversations to JSON for persistence:
+5. **Serialize Regularly**: Save important conversations to JSON for persistence:
 
    .. code-block:: python
 
@@ -524,7 +877,7 @@ Best Practices
       with open(f"conversation_{timestamp}.json", "w") as f:
           f.write(history.to_json())
 
-5. **Manage Context Windows**: Use token counting and truncation before long conversations:
+6. **Manage Context Windows**: Use token counting and truncation before long conversations:
 
    .. code-block:: python
 
@@ -532,10 +885,10 @@ Best Practices
       if history.count_tokens(tokenizer) > max_context:
           history = history.truncate_by_rounds(tokenizer, max_tokens=max_context)
 
-6. **Handle Incomplete Rounds**: Be aware that incomplete rounds (user message without
+7. **Handle Incomplete Rounds**: Be aware that incomplete rounds (user message without
    assistant response) are preserved. Use ``remove_last_round()`` if needed.
 
-7. **Use Token Analysis for Insights**: Use ``analyze_tokens()`` to understand token distribution
+8. **Use Token Analysis for Insights**: Use ``analyze_tokens()`` to understand token distribution
    and identify optimization opportunities:
 
    .. code-block:: python
@@ -557,18 +910,43 @@ Best Practices
 Common Pitfalls
 ---------------
 
-1. **Forgetting to Pass History**: In v2.0, history must be passed explicitly:
+1. **Forgetting to Update History**: Since history is immutable, you must manually update:
 
    .. code-block:: python
 
-      # Wrong - history=None, no history tracking
-      result = chat("Hello")
-      
-      # Correct - pass history explicitly
+      # Wrong - history not updated
       history = ChatHistory()
       result = chat("Hello", history=history)
+      # history is still empty!
+      
+      # Correct - manually update
+      history = ChatHistory()
+      result = chat("Hello", history=history)
+      history.add_user("Hello")
+      history.append_result(result)
 
-2. **Forgetting to Assign Truncated History**:
+2. **Assuming History is Updated Automatically**: History is NOT updated automatically:
+
+   .. code-block:: python
+
+      # Wrong assumption
+      history = ChatHistory()
+      result1 = chat("Hello", history=history)
+      result2 = chat("How are you?", history=history)
+      # result2 doesn't have context from result1 because history wasn't updated!
+
+      # Correct
+      history = ChatHistory()
+      result1 = chat("Hello", history=history)
+      history.add_user("Hello")
+      history.append_result(result1)
+      
+      result2 = chat("How are you?", history=history)
+      history.add_user("How are you?")
+      history.append_result(result2)
+      # Now result2 has context
+
+3. **Forgetting to Assign Truncated History**:
    ``truncate_by_rounds()`` returns a new instance. Don't forget to assign it:
 
    .. code-block:: python
@@ -580,7 +958,7 @@ Common Pitfalls
       # Correct
       history = history.truncate_by_rounds(tokenizer, max_tokens=4000)
 
-3. **Multiple System Messages**: If your messages contain multiple system messages,
+4. **Multiple System Messages**: If your messages contain multiple system messages,
    only the first one is extracted to ``history.system``. The rest remain in messages:
 
    .. code-block:: python
@@ -594,7 +972,7 @@ Common Pitfalls
       # history.system == "System 1"
       # history.messages[0] == {"role": "system", "content": "System 2"}
 
-4. **Incomplete Rounds**: When removing or truncating, incomplete rounds (user without
+5. **Incomplete Rounds**: When removing or truncating, incomplete rounds (user without
    assistant) are treated as valid rounds. Check for completion if needed:
 
    .. code-block:: python
@@ -605,10 +983,10 @@ Common Pitfalls
           # Incomplete round
           history.remove_last_round()
 
-5. **Token Counting Performance**: Token counting can be slow for long histories.
+6. **Token Counting Performance**: Token counting can be slow for long histories.
    Consider caching results or only counting when necessary.
 
-6. **Using Different History Objects**: Each history object is independent. Make sure
+7. **Using Different History Objects**: Each history object is independent. Make sure
    to use the same history object for a conversation session:
 
    .. code-block:: python
@@ -616,15 +994,24 @@ Common Pitfalls
       # Wrong - different history objects
       history1 = ChatHistory()
       result1 = chat("Hello", history=history1)
+      history1.add_user("Hello")
+      history1.append_result(result1)
       
       history2 = ChatHistory()
       result2 = chat("How are you?", history=history2)
+      history2.add_user("How are you?")
+      history2.append_result(result2)
       # history2 doesn't contain "Hello"
       
       # Correct - same history object
       history = ChatHistory()
       result1 = chat("Hello", history=history)
+      history.add_user("Hello")
+      history.append_result(result1)
+      
       result2 = chat("How are you?", history=history)
+      history.add_user("How are you?")
+      history.append_result(result2)
       # history contains both turns
 
 Utility Functions
@@ -700,7 +1087,7 @@ Search for messages containing specific text:
    # Useful for finding specific topics in long conversations
 
 Get Statistics
-~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~
 
 Get comprehensive statistics about the conversation:
 

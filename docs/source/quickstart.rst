@@ -73,12 +73,16 @@ Streaming with ChatParams:
    for chunk in chat.stream("Write a short story", params=params):
        print(chunk.delta, end="")
 
-Chat History Management (v2.0)
--------------------------------
+Chat History Management
+-----------------------
 
-Lexilux v2.0 provides explicit history management - you create and manage history objects yourself.
+Lexilux provides explicit history management with **immutable history objects**.
 
-**Explicit History Management** (v2.0):
+.. important::
+   **History Immutability**: All API methods create a clone of history internally and
+   **never modify the original**. You must manually update your history after each API call.
+
+**Explicit History Management with Manual Updates**:
 
 .. code-block:: python
 
@@ -89,14 +93,21 @@ Lexilux v2.0 provides explicit history management - you create and manage histor
    # Create history explicitly
    history = ChatHistory()
    
-   # Pass history explicitly - it's automatically updated
+   # Pass history explicitly - original is NOT modified
    result1 = chat("What is Python?", history=history)
+   # Manually update history
+   history.add_user("What is Python?")
+   history.append_result(result1)
+   
    result2 = chat("Tell me more", history=history)
+   # Manually update again
+   history.add_user("Tell me more")
+   history.append_result(result2)
    
    # History now contains both turns
    print(f"Total messages: {len(history.messages)}")  # 4 messages
 
-**History as MutableSequence** (v2.0):
+**History as MutableSequence**:
 
 .. code-block:: python
 
@@ -157,14 +168,17 @@ Lexilux v2.0 provides explicit history management - you create and manage histor
 
    history = ChatHistory()
    
-   # Pass history to stream - it's updated automatically
+   # Pass history to stream - original history is NOT modified
    iterator = chat.stream("Tell me a story", history=history)
    for chunk in iterator:
        print(chunk.delta, end="")
        # Access accumulated text at any time
        current_text = iterator.result.text
 
-   # History is automatically updated with full response
+   # Get result and manually update history
+   result = iterator.result.to_chat_result()
+   history.add_user("Tell me a story")
+   history.append_result(result)
    assert len(history.messages) == 2  # user + assistant
 
 .. note::
@@ -183,18 +197,20 @@ Recommended approach - use ``chat.complete()``:
    history = ChatHistory()
 
    # Automatically handles truncation, returns complete result
-   result = chat.complete("Write a long JSON response", history=history, max_tokens=100)
+   # History is optional for single-turn conversations
+   result = chat.complete("Write a long JSON response", max_tokens=100)
    json_data = json.loads(result.text)  # Guaranteed complete
 
-Conditional continue:
-
-.. code-block:: python
-
+   # Multi-turn conversation (with history)
    history = ChatHistory()
-   result = chat("Long story", history=history, max_tokens=50)
-   
-   # Only continues if truncated (requires explicit history)
-   full_result = chat.complete("Write JSON", max_tokens=100)
+   result = chat.complete("First question", history=history, max_tokens=100)
+   # Manually update history (history is immutable)
+   history.add_user("First question")
+   history.append_result(result)
+
+   result2 = chat.complete("Follow-up", history=history, max_tokens=100)
+   history.add_user("Follow-up")
+   history.append_result(result2)
 
 Advanced control:
 
@@ -205,12 +221,17 @@ Advanced control:
    chat = Chat(...)
    history = ChatHistory()
    result = chat("Story", history=history, max_tokens=50)
+   # Manually update history
+   history.add_user("Story")
+   history.append_result(result)
    
    if result.finish_reason == "length":
-       # Explicit history required, multiple continues, auto merge
+       # continue_request also doesn't modify original history
        full_result = ChatContinue.continue_request(
            chat, result, history=history, max_continues=3
        )
+       # Update history with merged result
+       history.append_result(full_result)
 
 .. note::
    For detailed guide on continue functionality, see :doc:`chat_continue`.

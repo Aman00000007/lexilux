@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Any, Iterator, Sequence
+from typing import Any, Iterator, Sequence
 
 import requests
 

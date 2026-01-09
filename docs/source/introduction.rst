@@ -8,7 +8,7 @@ Key Features
 
 * **Function-like API**: Call APIs like functions (``chat("hi")``, ``embed(["text"])``)
 * **Streaming Support**: Built-in streaming for Chat with automatic text accumulation
-* **Explicit History Management**: Full control over conversation history with explicit ``ChatHistory`` objects (v2.0)
+* **Explicit History Management**: Full control over conversation history with explicit ``ChatHistory`` objects
 * **Continue Generation**: Seamlessly continue cut-off responses with ``ChatContinue``
 * **Comprehensive Token Analysis**: Detailed token statistics and analysis for conversation history
 * **Unified Usage**: Consistent usage statistics across all APIs

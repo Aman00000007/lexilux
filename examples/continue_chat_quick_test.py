@@ -11,7 +11,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from config_loader import get_chat_config, parse_args
-from lexilux import Chat, ChatHistory, ChatContinue
+
+from lexilux import Chat, ChatContinue, ChatHistory
 
 
 def test_basic_continue():

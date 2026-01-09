@@ -153,7 +153,7 @@ When using ``chat.complete()`` or continuation functionality, you may encounter
 Handling Streaming Interruptions
 ---------------------------------
 
-When streaming is interrupted, partial content is preserved in history (v2.0):
+When streaming is interrupted, partial content is preserved in history:
 
 .. code-block:: python
 
@@ -263,11 +263,11 @@ Best Practices
           else:
               print(f"\nInterrupted: {e}")
               # Clean up partial response if needed
-              # In v2.0, you manage history explicitly
+              # You manage history explicitly
               if history.messages and history.messages[-1].get("role") == "assistant":
                   history.remove_last()
 
-4. **Handle history behavior on errors** (v2.0):
+4. **Handle history behavior on errors**:
 
    .. code-block:: python
 

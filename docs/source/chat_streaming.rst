@@ -102,13 +102,13 @@ When using ``StreamingIterator``, you can access the accumulated result at any p
    assert iterator.result.done is True
    assert len(iterator.result.text) > 0
 
-Integration with History (v2.0)
---------------------------------
+Integration with History
+-------------------------
 
-Automatic History Updates
-~~~~~~~~~~~~~~~~~~~~~~~~~
+Manual History Updates
+~~~~~~~~~~~~~~~~~~~~~~
 
-In v2.0, pass history explicitly and it's automatically updated:
+Pass history explicitly and manually update it after streaming completes:
 
 .. code-block:: python
 
@@ -117,21 +117,24 @@ In v2.0, pass history explicitly and it's automatically updated:
    chat = Chat(...)
    history = ChatHistory()
 
-   # Pass history explicitly - it's automatically updated
+   # Pass history explicitly - original history is NOT modified
    iterator = chat.stream("Tell me a story", history=history)
    for chunk in iterator:
        print(chunk.delta, end="")
 
-   # History is automatically updated with user message and assistant response
+   # Get result and manually update history
+   result = iterator.result.to_chat_result()
+   history.add_user("Tell me a story")
+   history.append_result(result)
    assert len(history.messages) == 2
    assert history.messages[0]["role"] == "user"
    assert history.messages[1]["role"] == "assistant"
-   assert history.messages[1]["content"] == iterator.result.text
+   assert history.messages[1]["content"] == result.text
 
-Real-time History Updates
-~~~~~~~~~~~~~~~~~~~~~~~~~
+Manual History Updates After Streaming
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-History is updated in real-time during streaming:
+History is immutable - you must manually update it after streaming completes:
 
 .. code-block:: python
 
@@ -139,21 +142,23 @@ History is updated in real-time during streaming:
 
    history = ChatHistory()
 
-   # Pass history to stream - it's updated automatically
+   # Pass history to stream - original history is NOT modified
    iterator = chat.stream("Tell me a story", history=history)
    
    for chunk in iterator:
        print(chunk.delta, end="")
-       # History is being updated in real-time
-       # Assistant message content is updated on each chunk
 
-   # After streaming, history contains complete response
-   assert history.messages[1]["content"] == iterator.result.text
+   # Get result and manually update history
+   result = iterator.result.to_chat_result()
+   history.add_user("Tell me a story")
+   history.append_result(result)
+
+   # After manual update, history contains complete response
+   assert history.messages[1]["content"] == result.text
 
 .. note::
-   In v2.0, history is updated automatically when you pass it to ``stream()``.
-   The user message is added before the request, and the assistant message
-   is added and updated during streaming.
+   History is immutable - it is not updated automatically when you pass it to ``stream()``.
+   You must manually add the user message and append the result after streaming completes.
 
 Handling Interruptions
 ----------------------
@@ -334,8 +339,8 @@ Complete Streaming Workflow
        # Export conversation
        ChatHistoryFormatter.save(history, "story.md")
 
-Streaming with History (v2.0)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Streaming with History
+~~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: python
 
@@ -344,14 +349,17 @@ Streaming with History (v2.0)
    chat = Chat(...)
    history = ChatHistory()
 
-   # Pass history explicitly - it's automatically updated
+   # Pass history explicitly - original history is NOT modified
    iterator = chat.stream("Tell me a story", history=history)
    for chunk in iterator:
        print(chunk.delta, end="")
 
-   # History already contains complete conversation
+   # Get result and manually update history
+   result = iterator.result.to_chat_result()
+   history.add_user("Tell me a story")
+   history.append_result(result)
    assert len(history.messages) == 2  # user + assistant
-   assert len(history.messages[1]["content"]) == len(iterator.result.text)
+   assert len(history.messages[1]["content"]) == len(result.text)
 
 Progress Monitoring
 ~~~~~~~~~~~~~~~~~~~

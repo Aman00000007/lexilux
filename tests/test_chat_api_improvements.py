@@ -6,12 +6,11 @@ Tests for Chat API improvements:
 4. Removed continue_if_needed() methods
 """
 
-import json
 from unittest.mock import Mock, patch
 
 import pytest
 
-from lexilux import Chat, ChatHistory, ChatContinue
+from lexilux import Chat, ChatContinue, ChatHistory
 from lexilux.chat.exceptions import ChatIncompleteResponseError
 from lexilux.chat.models import ChatResult
 from lexilux.usage import Usage
@@ -222,7 +221,7 @@ class TestCustomizableContinueStrategy:
             prompt_calls.append((count, max_count, current_text, original_prompt))
             return f"Continue {count}/{max_count}"
 
-        result = chat.complete(
+        chat.complete(
             "Write story",
             history=history,
             max_tokens=10,
@@ -261,7 +260,7 @@ class TestCustomizableContinueStrategy:
         def on_progress(count, max_count, current, all_results):
             progress_calls.append((count, max_count, len(current.text), len(all_results)))
 
-        result = chat.complete(
+        chat.complete(
             "Write story",
             history=history,
             max_tokens=10,
@@ -276,7 +275,6 @@ class TestCustomizableContinueStrategy:
     def test_continue_delay(self, mock_post):
         """Test that continue_delay is applied."""
         import time
-        from unittest.mock import call
 
         chat = Chat(base_url="https://api.test.com/v1", api_key="test", model="test")
         history = ChatHistory()
@@ -441,7 +439,7 @@ class TestContinueRequestCustomization:
         }
         mock_post.return_value.raise_for_status = lambda: None
 
-        result = ChatContinue.continue_request(
+        ChatContinue.continue_request(
             chat,
             initial_result,
             history=original_history,

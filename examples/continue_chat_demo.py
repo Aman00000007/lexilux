@@ -25,7 +25,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from config_loader import get_chat_config, parse_args
 
-from lexilux import Chat, ChatHistory, ChatContinue
+from lexilux import Chat, ChatContinue, ChatHistory
 
 
 def print_section(title: str):
@@ -44,7 +44,7 @@ def print_result_info(result, label: str = "Result"):
         f"  Usage: {result.usage.total_tokens} tokens (input: {result.usage.input_tokens}, output: {result.usage.output_tokens})"
     )
     if result.finish_reason == "length":
-        print(f"  ⚠️  TRUNCATED - needs continuation")
+        print("  ⚠️  TRUNCATED - needs continuation")
     print()
 
 
@@ -384,12 +384,12 @@ def scenario_7_concatenate_and_continue(chat: Chat):
         )
 
         print_result_info(auto_result, "Auto Continue Result")
-        print(f"\n📊 Comparison:")
+        print("\n📊 Comparison:")
         print(
             f"  Manual pattern final length: {len(merged_text) if result1.finish_reason == 'length' else 'N/A'} chars"
         )
         print(f"  Auto continue final length: {len(auto_result.text)} chars")
-        print(f"\n💡 Recommendation: Use library's continue mechanism for better integration")
+        print("\n💡 Recommendation: Use library's continue mechanism for better integration")
 
 
 def scenario_8_error_handling(chat: Chat):
